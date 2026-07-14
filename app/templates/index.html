@@ -213,6 +213,19 @@ section{margin-bottom:26px}
 .gen-card .flags{display:flex; gap:6px; flex-wrap:wrap; margin-top:10px}
 
 /* ---------- Tendencia de generación ---------- */
+.range-sel{display:inline-flex; gap:2px; background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:2px}
+.range-sel button{
+  border:none; background:transparent; color:var(--muted);
+  font-family:var(--font-mono); font-size:12px; font-weight:500;
+  padding:4px 11px; border-radius:6px; cursor:pointer; line-height:1.3;
+  transition:background .15s, color .15s;
+}
+.range-sel button:hover{color:var(--text)}
+.range-sel button.active{background:var(--dist); color:#06121C; font-weight:600}
+.trend-hint{
+  position:absolute; right:12px; bottom:6px; pointer-events:none;
+  font-family:var(--font-mono); font-size:10px; color:var(--faint);
+}
 .trend-panel{position:relative}
 canvas#trend{width:100%; height:130px; display:block; cursor:crosshair}
 .trend-tooltip{
@@ -412,11 +425,17 @@ footer{
     <div class="sec-head">
       <h2 id="hBal">Tendencia de generación</h2>
       <div class="rule"></div>
-      <span class="note">desde la apertura de esta página · pasá el cursor para ver valores</span>
+      <div class="range-sel" id="rangeSel" role="group" aria-label="Ventana de tiempo del gráfico">
+        <button type="button" data-range="3600">1 h</button>
+        <button type="button" data-range="21600">6 h</button>
+        <button type="button" data-range="43200">12 h</button>
+        <button type="button" data-range="86400">24 h</button>
+      </div>
     </div>
     <div class="panel trend-panel">
       <canvas id="trend" height="130"></canvas>
       <div id="trendTooltip" class="trend-tooltip"></div>
+      <div class="trend-hint" id="trendHint"></div>
     </div>
   </section>
 
@@ -494,7 +513,7 @@ footer{
    base: URL de NUESTRO backend. Vacío = mismo origen que sirve la página
    (lo normal en producción). Se puede sobreescribir con ?base= o en el diálogo,
    útil para desarrollo apuntando a otro host. */
-const DEFAULTS = { base: "", interval: 5000, trendRange: 8*3600 };
+const DEFAULTS = { base: "", interval: 5000, trendRange: 3600 };
 function loadCfg(){
   try{
     const raw = localStorage.getItem("cdc_cfg");
@@ -677,12 +696,27 @@ async function loadTrendHistory(){
   }catch(e){ /* si no hay histórico, el trend se llena en vivo */ }
 }
 
-/* Empuja el snapshot vigente al buffer del trend en vivo. */
+/* Empuja el snapshot vigente al buffer del trend en vivo. El recorte es por
+   TIEMPO (ventana elegida), no por cantidad: así el gráfico siempre muestra
+   exactamente el rango seleccionado y el buffer no crece sin límite. */
 function pushLiveTrendPoint(){
   const gensP = {};
   state.gens.forEach(g => { gensP[g.id] = g.pMW; });
-  state.history.push({ t: state.lastOk ? state.lastOk.getTime() : Date.now(), gens: gensP });
-  if(state.history.length > HISTORY_MAX) state.history.shift();
+  const now = state.lastOk ? state.lastOk.getTime() : Date.now();
+  state.history.push({ t: now, gens: gensP });
+  trimHistory(now);
+}
+function trimHistory(now){
+  const rangeMs = (CFG.trendRange || 3600) * 1000;
+  const cutoff = (now || Date.now()) - rangeMs;
+  // Descarta puntos fuera de la ventana, pero deja un colchón de seguridad
+  // para no vaciar el gráfico si el reloj del snapshot y el local difieren.
+  while(state.history.length > 2 && state.history[0].t < cutoff){
+    state.history.shift();
+  }
+  // Tope duro de seguridad para ventanas largas con muchos puntos en vivo.
+  const HARD_CAP = 5000;
+  if(state.history.length > HARD_CAP) state.history.splice(0, state.history.length - HARD_CAP);
 }
 
 let evtSource = null;
@@ -782,7 +816,35 @@ function demoTick(){
 }
 
 /* ---------------- Historia / tendencia ---------------- */
-const HISTORY_MAX = 600; // ~50 min a 5 s en vivo (el histórico largo viene del backend)
+/* ---------------- Selector de ventana del trend ---------------- */
+function fmtRangeLabel(sec){
+  if(sec % 3600 === 0) return `${sec/3600} h`;
+  return `${Math.round(sec/60)} min`;
+}
+async function setTrendRange(sec){
+  CFG.trendRange = sec;
+  saveCfg(CFG);
+  // Marca visual del botón activo
+  document.querySelectorAll("#rangeSel button").forEach(b=>{
+    b.classList.toggle("active", parseInt(b.dataset.range,10) === sec);
+  });
+  $("#trendHint").textContent = "ventana: " + fmtRangeLabel(sec);
+  // Recarga el histórico completo desde el backend para esa ventana
+  await loadTrendHistory();
+  renderTrend();
+}
+function initRangeSelector(){
+  const sel = $("#rangeSel");
+  if(!sel) return;
+  sel.querySelectorAll("button").forEach(b=>{
+    b.addEventListener("click", ()=> setTrendRange(parseInt(b.dataset.range,10)));
+  });
+  // Estado inicial según CFG (por defecto 1 h)
+  const cur = CFG.trendRange || 3600;
+  const match = [...sel.querySelectorAll("button")].find(b=>parseInt(b.dataset.range,10)===cur);
+  (match || sel.querySelector("button")).classList.add("active");
+  $("#trendHint").textContent = "ventana: " + fmtRangeLabel(cur);
+}
 function pushHistory(){ pushLiveTrendPoint(); }
 
 
@@ -1091,7 +1153,7 @@ function renderGens(){
 
 /* ---------------- Render: tendencia de generación ---------------- */
 const GEN_COLORS = ["#FFB454", "#5BC8F5", "#B79BF2", "#FF8A80", "#8BE28B", "#F2C879"];
-const TREND_PAD = { l:44, r:10, t:16, b:18 };
+const TREND_PAD = { l:44, r:10, t:16, b:24 };
 let trendHoverIdx = null; // índice en state.history bajo el cursor, o null
 
 function renderTrend(){
@@ -1132,6 +1194,25 @@ function renderTrend(){
     ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y); ctx.stroke();
     ctx.fillText(nf1.format(v), 4, y+3);
   }
+  /* marcas de tiempo en el eje X (según el timestamp real de los puntos) */
+  const tFirst = H[0].t, tLast = H[H.length-1].t;
+  const spanMs = Math.max(1, tLast - tFirst);
+  const rangeSec = CFG.trendRange || 3600;
+  // Formato: solo hora:min para ventanas <= 24h
+  const fmtTick = ms => new Date(ms).toLocaleTimeString("es-AR", { hour:"2-digit", minute:"2-digit" });
+  const TICKS = 4;
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(115,136,172,.7)";
+  for(let k=0;k<=TICKS;k++){
+    const frac = k / TICKS;
+    const tx = pad.l + (w-pad.l-pad.r) * frac;
+    const tms = tFirst + spanMs * frac;
+    // línea de grilla vertical tenue
+    ctx.strokeStyle = "rgba(29,43,71,.5)";
+    ctx.beginPath(); ctx.moveTo(tx, pad.t); ctx.lineTo(tx, h-pad.b); ctx.stroke();
+    ctx.fillText(fmtTick(tms), tx, h - 5);
+  }
+  ctx.textAlign = "left";
   /* una línea de potencia activa por generador */
   ids.forEach((id, gi) => {
     const color = GEN_COLORS[gi % GEN_COLORS.length];
@@ -1382,6 +1463,7 @@ const DEMO_GENS = [
 ];
 
 /* ---------------- Arranque ---------------- */
+initRangeSelector();
 bootstrap();
 </script>
 </body>

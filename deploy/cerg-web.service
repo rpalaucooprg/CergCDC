@@ -12,13 +12,16 @@ EnvironmentFile=/etc/cerg-cdc/cerg-cdc.env
 # gevent para poder mantener muchas conexiones SSE abiertas con pocos workers.
 # Cada worker gevent maneja cientos de conexiones concurrentes; con 2 workers
 # alcanza de sobra para el CDC. NO usar workers sync (bloquearían en el SSE).
+# El reverse proxy (nginx) corre en el firewall IPFire, no en este contenedor.
+# Por eso gunicorn escucha en 0.0.0.0:8000 para ser alcanzable desde la LAN /
+# el proxy del IPFire. Si algun dia se pone un proxy local, volver a 127.0.0.1.
 ExecStart=/opt/cerg-cdc/venv/bin/gunicorn \
     --worker-class gevent \
     --workers 2 \
     --worker-connections 200 \
     --timeout 0 \
     --graceful-timeout 5 \
-    --bind 127.0.0.1:8000 \
+    --bind 0.0.0.0:8000 \
     --access-logfile - \
     --error-logfile - \
     app.web:app

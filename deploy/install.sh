@@ -57,37 +57,21 @@ cp "$REPO_DIR/deploy/cerg-poller.service" /etc/systemd/system/
 cp "$REPO_DIR/deploy/cerg-web.service" /etc/systemd/system/
 systemctl daemon-reload
 
-# 7. nginx (si esta instalado): reverse proxy en :80 -> gunicorn en 127.0.0.1:8000.
-#    Asi el tablero es accesible desde la LAN por el puerto 80 SIN exponer
-#    gunicorn directo. gunicorn queda seguro escuchando solo en localhost.
-if command -v nginx >/dev/null 2>&1; then
-    echo "==> Configurando nginx (reverse proxy en puerto 80)"
-    cp "$REPO_DIR/deploy/nginx-cerg-cdc.conf" /etc/nginx/sites-available/cerg-cdc
-    ln -sf /etc/nginx/sites-available/cerg-cdc /etc/nginx/sites-enabled/cerg-cdc
-    rm -f /etc/nginx/sites-enabled/default
-    if nginx -t 2>/dev/null; then
-        systemctl reload nginx || systemctl restart nginx
-        echo "    nginx OK: el tablero quedara en http://<IP-del-CT>/ (puerto 80)"
-    else
-        echo "    !!! nginx -t fallo; revisar /etc/nginx/sites-available/cerg-cdc"
-    fi
-else
-    echo "==> nginx no esta instalado; el web quedara solo en 127.0.0.1:8000."
-    echo "    Para acceso desde la LAN: instalar nginx (ver bootstrap) o exponer"
-    echo "    gunicorn cambiando --bind a 0.0.0.0:8000 en el servicio (menos seguro)."
-fi
+# El reverse proxy corre en el firewall IPFire (no en este contenedor).
+# gunicorn escucha en 0.0.0.0:8000 (ver cerg-web.service) y el IPFire publica
+# el servicio hacia la LAN. No se instala nginx local.
 
 cat <<'NEXT'
 
 ==> Instalación de archivos completa. Pasos manuales restantes:
 
-  NOTA: en un LXC dedicado, deploy/lxc-bootstrap.sh ya hace los pasos 0-1 y 6
-  (paquetes, PostgreSQL en UTF8, locale, timezone, base/rol y nginx). Si lo
-  usaste, saltá directo al paso 2.
+  NOTA: en un LXC dedicado, deploy/lxc-bootstrap.sh ya hace los pasos 0-1
+  (paquetes, PostgreSQL en UTF8, locale, timezone, base/rol). Si lo usaste,
+  saltá directo al paso 2.
 
   0) Instalar PostgreSQL (versión por defecto del release de Ubuntu):
        sudo apt update
-       sudo apt install -y postgresql postgresql-client postgresql-contrib nginx
+       sudo apt install -y postgresql postgresql-client postgresql-contrib
 
   1) Crear la base y el rol (LA BASE DEBE SER UTF8, si no falla con caracteres
      no-ASCII; usar TEMPLATE template0 para no heredar SQL_ASCII):
@@ -113,6 +97,7 @@ cat <<'NEXT'
        systemctl status cerg-poller cerg-web
        journalctl -u cerg-poller -f          # esperar "ok . gen XX MW ..."
        curl -s localhost:8000/healthz         # {"status":"ok"}
-       # desde la LAN, con nginx:  http://<IP-del-CT>/
+       # desde la LAN:  http://<IP-del-CT>:8000/
+       # (el reverse proxy / publicacion se hace en el firewall IPFire)
 
 NEXT

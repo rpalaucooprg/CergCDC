@@ -148,10 +148,10 @@ crudo, el disco crece ~0,5 GB/mes; conviene un dataset expandible y vigilar el u
 Dentro del contenedor, como root:
 
 ```bash
-# 1) Preparar el sistema (paquetes, PostgreSQL UTF8, nginx, locale, timezone, base y rol)
+# 1) Preparar el sistema (paquetes, PostgreSQL UTF8, locale, timezone, base y rol)
 ./deploy/lxc-bootstrap.sh      # anotá la clave que genera para el rol cerg
 
-# 2) Desplegar la app (venv, systemd, y config de nginx en puerto 80)
+# 2) Desplegar la app (venv, systemd)
 ./deploy/install.sh
 
 # 3) Poner la clave de la base y el locale en el entorno
@@ -162,8 +162,10 @@ systemctl enable --now cerg-poller.service cerg-web.service
 systemctl status cerg-poller cerg-web
 ```
 
-El tablero queda accesible desde la LAN en **`http://<IP-del-CT>/`** (puerto 80,
-vía nginx). gunicorn se mantiene en `127.0.0.1:8000`, sin exponerse directo.
+El tablero queda accesible en **`http://<IP-del-CT>:8000/`**. gunicorn escucha
+en `0.0.0.0:8000`. El reverse proxy / publicación hacia el resto de la red se
+hace en el firewall **IPFire** (no en este contenedor); ver
+`deploy/nginx-cerg-cdc.conf` como referencia para la config de SSE del proxy.
 
 ## Despliegue genérico en Ubuntu Server
 
@@ -203,9 +205,10 @@ código/scripts. Si algo similar reaparece, acá está el diagnóstico:
 5. **`syntax error at or near "$1"` en `NOTIFY`** — el comando `NOTIFY` no acepta
    parámetros enlazados. Se cambió por `SELECT pg_notify(canal, payload)`.
 
-Y un punto de red: gunicorn escucha en `127.0.0.1:8000` (seguro). El acceso
-desde la LAN es vía **nginx en el puerto 80**, que el instalador configura
-automáticamente si nginx está presente.
+Y un punto de red: gunicorn escucha en `0.0.0.0:8000`. El reverse proxy y la
+publicacion hacia el resto de la red se hacen en el firewall **IPFire**; ver
+`deploy/nginx-cerg-cdc.conf` como referencia (lo critico es `proxy_buffering off`
+en `/api/stream` para que el SSE no se retrase).
 
 ## Notas de operación
 

@@ -23,7 +23,6 @@ apt-get install -y \
     python3 python3-venv python3-dev \
     postgresql postgresql-client postgresql-contrib \
     build-essential libpq-dev \
-    nginx \
     rsync curl ca-certificates \
     locales tzdata
 

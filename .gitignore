@@ -1,0 +1,19 @@
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Secretos: el entorno con la clave de la base NUNCA va al repo.
+.env
+*.env
+!deploy/*.env.example
+cerg-cdc.env
+
+*.log
+.DS_Store
+node_modules/
+
+# Artefactos de empaquetado / pruebas locales
+*.tar.gz
+app_front.js
+app_test*.cjs

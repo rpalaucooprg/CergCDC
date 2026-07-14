@@ -1,0 +1,35 @@
+[Unit]
+Description=CERG CDC - Web (Gunicorn/gevent, SSE)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cerg
+Group=cerg
+WorkingDirectory=/opt/cerg-cdc
+EnvironmentFile=/etc/cerg-cdc/cerg-cdc.env
+# gevent para poder mantener muchas conexiones SSE abiertas con pocos workers.
+# Cada worker gevent maneja cientos de conexiones concurrentes; con 2 workers
+# alcanza de sobra para el CDC. NO usar workers sync (bloquearían en el SSE).
+ExecStart=/opt/cerg-cdc/venv/bin/gunicorn \
+    --worker-class gevent \
+    --workers 2 \
+    --worker-connections 200 \
+    --timeout 0 \
+    --graceful-timeout 5 \
+    --bind 127.0.0.1:8000 \
+    --access-logfile - \
+    --error-logfile - \
+    app.web:app
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cerg-cdc
+
+[Install]
+WantedBy=multi-user.target

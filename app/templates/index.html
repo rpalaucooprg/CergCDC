@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDC · CERG — Monitor de Generación y Distribución</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0B1220;
+  --panel:#0F1929;
+  --panel-2:#12203A;
+  --line:#1D2B47;
+  --line-soft:#16233C;
+  --text:#DCE6F7;
+  --muted:#7388AC;
+  --faint:#46587A;
+  --gen:#FFB454;        /* generación — ámbar térmico */
+  --gen-dim:#8A6430;
+  --dist:#5BC8F5;       /* distribución — cian */
+  --dist-dim:#2E5F78;
+  --aux:#B79BF2;        /* servicios auxiliares */
+  --bad:#FF6B6B;
+  --warn:#FFD166;
+  --off:#3A4C6E;
+  --radius:12px;
+  --font-display:"Saira Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:"IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+  *{transition:none !important; animation:none !important}
+}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  font-size:14px;
+  line-height:1.45;
+  min-height:100vh;
+  background-image:
+    radial-gradient(1200px 500px at 75% -10%, rgba(91,200,245,.05), transparent 60%),
+    radial-gradient(900px 420px at 10% -10%, rgba(255,180,84,.05), transparent 60%);
+}
+a{color:var(--dist)}
+button{font:inherit; color:inherit; cursor:pointer}
+:focus-visible{outline:2px solid var(--dist); outline-offset:2px; border-radius:4px}
+
+/* ---------- Header ---------- */
+header{
+  position:sticky; top:0; z-index:20;
+  background:rgba(11,18,32,.88);
+  backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);
+}
+.hd-inner{
+  max-width:1360px; margin:0 auto; padding:10px 20px;
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+}
+.brand{display:flex; align-items:center; gap:12px; min-width:0}
+.brand svg{flex:none}
+.brand h1{
+  font-family:var(--font-display);
+  font-weight:700; font-size:22px; letter-spacing:.04em;
+  text-transform:uppercase; line-height:1.05;
+}
+.brand small{
+  display:block; font-family:var(--font-body); font-weight:400;
+  font-size:11px; letter-spacing:.14em; color:var(--muted); text-transform:uppercase;
+}
+.hd-status{margin-left:auto; display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.pill{
+  display:inline-flex; align-items:center; gap:7px;
+  border:1px solid var(--line); border-radius:999px;
+  padding:4px 12px; font-size:12px; color:var(--muted);
+  font-family:var(--font-mono); white-space:nowrap;
+}
+.pill b{color:var(--text); font-weight:600}
+.dot{width:8px; height:8px; border-radius:50%; background:var(--faint); flex:none}
+.dot.live{background:var(--dist); box-shadow:0 0 8px rgba(91,200,245,.7)}
+.dot.demo{background:var(--warn); box-shadow:0 0 8px rgba(255,209,102,.6)}
+.dot.lost{background:var(--bad); box-shadow:0 0 8px rgba(255,107,107,.6)}
+@media (prefers-reduced-motion: no-preference){
+  .dot.live{animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.45}}
+}
+.icon-btn{
+  background:var(--panel); border:1px solid var(--line); border-radius:8px;
+  width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center;
+  color:var(--muted);
+}
+.icon-btn:hover{color:var(--text); border-color:var(--faint)}
+
+/* ---------- Banner demo / conexión ---------- */
+.banner{
+  display:none; max-width:1360px; margin:14px auto -6px; padding:10px 16px;
+  border-radius:var(--radius); font-size:13px;
+  border:1px solid; align-items:flex-start; gap:10px;
+}
+.banner.show{display:flex}
+.banner.demo{border-color:rgba(255,209,102,.4); background:rgba(255,209,102,.07); color:#FFE3A3}
+.banner.lost{border-color:rgba(255,107,107,.4); background:rgba(255,107,107,.07); color:#FFB3B3}
+.banner code{font-family:var(--font-mono); font-size:12px}
+
+/* ---------- Layout ---------- */
+main{max-width:1360px; margin:0 auto; padding:20px}
+section{margin-bottom:26px}
+.sec-head{
+  display:flex; align-items:baseline; gap:12px; margin-bottom:12px; flex-wrap:wrap;
+}
+.sec-head h2{
+  font-family:var(--font-display); font-weight:600; font-size:19px;
+  letter-spacing:.09em; text-transform:uppercase;
+}
+.sec-head .rule{flex:1; height:1px; background:var(--line); min-width:40px}
+.sec-head .note{font-size:12px; color:var(--muted)}
+.tag-gen{color:var(--gen)} .tag-dist{color:var(--dist)}
+
+/* ---------- KPI strip ---------- */
+.kpis{
+  display:grid; gap:12px;
+  grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));
+  margin-bottom:26px;
+}
+.kpi{
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:14px 16px; position:relative; overflow:hidden;
+}
+.kpi::before{
+  content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:var(--kc, var(--faint));
+}
+.kpi .lbl{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+.kpi .val{font-family:var(--font-mono); font-size:26px; font-weight:600; margin-top:4px; line-height:1.1}
+.kpi .val small{font-size:13px; color:var(--muted); font-weight:400}
+.kpi .sub{font-size:11px; color:var(--muted); margin-top:2px; font-family:var(--font-mono)}
+
+/* ---------- Panel genérico ---------- */
+.panel{
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px;
+}
+
+/* ---------- Unifilar ---------- */
+.diagram-wrap{overflow-x:auto; padding-bottom:4px}
+.diagram-wrap svg{display:block; min-width:1100px; width:100%; height:auto}
+.legend{
+  display:flex; gap:16px; flex-wrap:wrap; margin-top:10px;
+  font-size:11px; color:var(--muted);
+}
+.bus-summary{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px}
+.bus-chip{
+  display:flex; align-items:center; gap:10px;
+  border:1px solid var(--line); border-radius:9px; padding:7px 12px;
+  font-family:var(--font-mono); font-size:12px; color:var(--muted);
+}
+.bus-chip b{
+  font-family:var(--font-display); font-weight:700; letter-spacing:.06em;
+  color:var(--text); font-size:12px; text-transform:uppercase;
+}
+.bus-chip .v{color:var(--text)}
+.legend span{display:inline-flex; align-items:center; gap:6px}
+.sw{width:14px; height:3px; border-radius:2px; display:inline-block}
+.sq{width:10px; height:10px; display:inline-block; border-radius:2px}
+.bay{cursor:pointer}
+#diagram .bay-label{fill:var(--text)}
+#diagram .bay-label.dim{fill:var(--faint)}
+.bay:hover .bay-label, .bay:focus-visible .bay-label{fill:var(--dist)}
+@media (prefers-reduced-motion: no-preference){
+  .alarm-dot{animation:blink 1.2s steps(2) infinite}
+  @keyframes blink{50%{opacity:.2}}
+}
+
+/* ---------- Generadores ---------- */
+.gen-grid{display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr))}
+.gen-card{
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px; position:relative;
+}
+.gen-card.running{border-color:rgba(255,180,84,.35)}
+.gen-card .top{display:flex; align-items:center; gap:10px; margin-bottom:8px}
+.gen-card .gid{
+  font-family:var(--font-display); font-size:22px; font-weight:700; letter-spacing:.05em;
+}
+.badge{
+  font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  border:1px solid var(--line); border-radius:5px; padding:2px 7px; color:var(--muted);
+  font-family:var(--font-mono); white-space:nowrap;
+}
+.badge.on{color:#0B1220; background:var(--gen); border-color:var(--gen); font-weight:600}
+.badge.off{color:var(--muted)}
+.badge.busA{color:var(--gen); border-color:var(--gen-dim)}
+.badge.busB{color:var(--dist); border-color:var(--dist-dim)}
+.badge.warn{color:var(--warn); border-color:rgba(255,209,102,.5)}
+.badge.bad{color:var(--bad); border-color:rgba(255,107,107,.5)}
+.gen-card .pw{
+  font-family:var(--font-mono); font-size:38px; font-weight:600; line-height:1;
+  margin:6px 0 2px;
+}
+.gen-card .pw small{font-size:16px; color:var(--muted); font-weight:400}
+.gen-card .meterbar{
+  height:5px; border-radius:3px; background:var(--line-soft); overflow:hidden; margin:10px 0 12px;
+}
+.gen-card .meterbar i{display:block; height:100%; background:var(--gen); border-radius:3px; transition:width .6s ease}
+.kv{display:grid; grid-template-columns:auto 1fr; gap:3px 14px; font-size:12px}
+.kv dt{color:var(--muted)}
+.kv dd{font-family:var(--font-mono); text-align:right}
+.gen-card .flags{display:flex; gap:6px; flex-wrap:wrap; margin-top:10px}
+
+/* ---------- Tendencia de generación ---------- */
+.trend-panel{position:relative}
+canvas#trend{width:100%; height:130px; display:block; cursor:crosshair}
+.trend-tooltip{
+  position:absolute; top:8px; pointer-events:none;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
+  padding:8px 10px; font-family:var(--font-mono); font-size:11px; color:var(--text);
+  white-space:nowrap; display:none; box-shadow:0 6px 18px rgba(0,0,0,.35); z-index:2;
+}
+.trend-tooltip .tt-time{color:var(--muted); font-size:10px; margin-bottom:4px; display:block}
+.trend-tooltip .tt-row{display:flex; align-items:center; gap:6px}
+.trend-tooltip .tt-dot{width:7px; height:7px; border-radius:50%; flex:none}
+
+/* ---------- Tabla distribución ---------- */
+.tbl-wrap{overflow-x:auto}
+table{width:100%; border-collapse:collapse; font-size:13px; min-width:760px}
+thead th{
+  text-align:left; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--muted); font-weight:500; padding:8px 10px; border-bottom:1px solid var(--line);
+  white-space:nowrap; user-select:none;
+}
+thead th.sortable{cursor:pointer}
+thead th.sortable:hover{color:var(--text)}
+thead th .arrow{font-size:9px}
+tbody td{
+  padding:7px 10px; border-bottom:1px solid var(--line-soft);
+  font-family:var(--font-mono); white-space:nowrap;
+}
+tbody tr:hover{background:rgba(91,200,245,.04)}
+tbody tr.flash{animation:flashrow 1.6s ease}
+@keyframes flashrow{0%{background:rgba(91,200,245,.22)} 100%{background:transparent}}
+td.cell-id{font-weight:600}
+.loadbar{
+  position:relative; width:120px; height:6px; background:var(--line-soft);
+  border-radius:3px; display:inline-block; vertical-align:middle; margin-right:8px;
+}
+.loadbar i{position:absolute; inset:0 auto 0 0; background:var(--dist); border-radius:3px; transition:width .6s ease}
+.st{display:inline-flex; align-items:center; gap:6px}
+.st .sq{border:1px solid var(--faint)}
+.st.closed .sq{background:var(--dist); border-color:var(--dist)}
+.st.closed-gen .sq{background:var(--gen); border-color:var(--gen)}
+.st.open .sq{background:transparent}
+.st.out .sq{background:transparent; border-style:dashed}
+.st.gnd .sq{background:var(--bad); border-color:var(--bad)}
+tr.is-out td{color:var(--faint)}
+tr.is-out td.cell-id{color:var(--muted)}
+.alm-chip{
+  color:var(--bad); font-size:11px; border:1px solid rgba(255,107,107,.5);
+  padding:1px 7px; border-radius:999px;
+}
+
+/* ---------- Alarmas ---------- */
+.alarms{display:flex; flex-direction:column; gap:8px}
+.alarm-item{
+  display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;
+  border:1px solid rgba(255,107,107,.35); background:rgba(255,107,107,.05);
+  border-radius:10px; padding:10px 14px; font-size:13px;
+}
+.alarm-item.acked{border-color:var(--line); background:transparent; color:var(--muted)}
+.alarm-item .cell{font-family:var(--font-mono); font-weight:600}
+.alarm-item time{margin-left:auto; font-family:var(--font-mono); font-size:12px; color:var(--muted)}
+.empty{
+  border:1px dashed var(--line); border-radius:10px; padding:18px; text-align:center;
+  color:var(--muted); font-size:13px;
+}
+
+/* ---------- Config ---------- */
+dialog#cfg{
+  background:var(--panel-2); color:var(--text);
+  border:1px solid var(--line); border-radius:14px; padding:22px;
+  max-width:440px; width:calc(100% - 40px);
+}
+dialog#cfg::backdrop{background:rgba(4,8,16,.7); backdrop-filter:blur(3px)}
+dialog#cfg h3{font-family:var(--font-display); letter-spacing:.06em; text-transform:uppercase; margin-bottom:14px}
+dialog#cfg label{display:block; font-size:12px; color:var(--muted); margin:12px 0 4px}
+dialog#cfg input, dialog#cfg select{
+  width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text);
+  border-radius:8px; padding:8px 10px; font-family:var(--font-mono); font-size:13px;
+}
+dialog#cfg .row{display:flex; gap:10px; justify-content:flex-end; margin-top:18px}
+.btn{
+  border:1px solid var(--line); background:var(--panel); border-radius:8px;
+  padding:8px 16px; font-size:13px;
+}
+.btn.primary{background:var(--dist); border-color:var(--dist); color:#06121C; font-weight:600}
+
+footer{
+  max-width:1360px; margin:0 auto; padding:10px 20px 30px;
+  color:var(--faint); font-size:11px; display:flex; gap:14px; flex-wrap:wrap;
+}
+@media (max-width:640px){
+  .brand h1{font-size:18px}
+  .kpi .val{font-size:21px}
+  .gen-card .pw{font-size:30px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hd-inner">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+        <circle cx="17" cy="17" r="15.5" fill="none" stroke="var(--dist)" stroke-width="1.6"/>
+        <path d="M18.5 5 L11 19 h5.4 L14.5 29 L23 15 h-5.4 Z" fill="var(--gen)"/>
+      </svg>
+      <h1>Centro de Despacho de Cargas
+        <small>Cooperativa Eléctrica Río Grande · ScadaVision</small>
+      </h1>
+    </div>
+    <div class="hd-status">
+      <span class="pill"><span class="dot" id="stateDot"></span><span id="stateTxt">iniciando…</span></span>
+      <span class="pill">act. <b id="lastUpd">—</b></span>
+      <span class="pill" id="clock">—</span>
+      <button class="icon-btn" id="btnCfg" title="Configuración" aria-label="Configuración">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="banner demo" id="bannerDemo" role="status">
+  <b>⚠ Modo demostración.</b>
+  <span>No se pudo conectar con el servidor de monitoreo (<code id="demoUrl"></code>). Se muestran datos de ejemplo con variación simulada — <b>no representan el estado real de la planta</b>. Verificá que el servicio esté activo; la reconexión es automática.</span>
+</div>
+<div class="banner lost" id="bannerLost" role="status">
+  <b>⚠ Conexión perdida.</b>
+  <span>Se muestran los últimos datos recibidos (<span id="staleAge">—</span>). Reintentando…</span>
+</div>
+
+<main>
+
+  <!-- KPIs -->
+  <div class="kpis" id="kpis">
+    <div class="kpi" style="--kc:var(--gen)">
+      <div class="lbl">Generación total</div>
+      <div class="val" id="kGen">— <small>MW</small></div>
+      <div class="sub" id="kGenSub">—</div>
+    </div>
+    <div class="kpi" style="--kc:var(--aux)">
+      <div class="lbl">Servicios auxiliares</div>
+      <div class="val" id="kAux">— <small>MW</small></div>
+      <div class="sub" id="kAuxSub">—</div>
+    </div>
+    <div class="kpi">
+      <div class="lbl">Frecuencia</div>
+      <div class="val" id="kFreq">— <small>Hz</small></div>
+      <div class="sub" id="kFreqSub">red 50 Hz</div>
+    </div>
+    <div class="kpi">
+      <div class="lbl">Tensión de barras</div>
+      <div class="val" id="kVolt">— <small>kV</small></div>
+      <div class="sub" id="kVoltSub">compuesta media</div>
+    </div>
+    <div class="kpi">
+      <div class="lbl">Alarmas activas</div>
+      <div class="val" id="kAlarm">—</div>
+      <div class="sub" id="kAlarmSub">—</div>
+    </div>
+  </div>
+
+  <!-- Unifilar -->
+  <section aria-labelledby="hUnifilar">
+    <div class="sec-head">
+      <h2 id="hUnifilar">Unifilar de barras 13,2 kV</h2>
+      <div class="rule"></div>
+      <span class="note">clic en una celda para ver su detalle</span>
+    </div>
+    <div class="panel">
+      <div class="bus-summary" id="busSummary"></div>
+      <div class="diagram-wrap" id="diagram" role="img" aria-label="Diagrama unifilar de barras A y B con generadores y alimentadores"></div>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--gen)"></span> generación en servicio</span>
+        <span><span class="sw" style="background:var(--dist)"></span> alimentador en servicio</span>
+        <span><span class="sw" style="background:var(--aux)"></span> servicios auxiliares</span>
+        <span><span class="sw" style="background:var(--off)"></span> abierto / fuera de servicio</span>
+        <span><span class="sq" style="background:var(--dist)"></span> interruptor cerrado</span>
+        <span><span class="sq" style="border:1px solid var(--faint)"></span> interruptor abierto</span>
+        <span><span class="sq" style="background:var(--bad)"></span> puesta a tierra / alarma sin reconocer</span>
+        <span><span class="sq" style="background:var(--faint); width:6px; height:6px; border-radius:50%"></span> seccionador A/B cerrado</span>
+        <span style="margin-left:auto">valores bajo cada celda: P en MW</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Generación -->
+  <section aria-labelledby="hGen">
+    <div class="sec-head">
+      <h2 id="hGen" class="tag-gen">Generación</h2>
+      <div class="rule"></div>
+      <span class="note" id="genNote">—</span>
+    </div>
+    <div class="gen-grid" id="genGrid"></div>
+  </section>
+
+  <!-- Tendencia de generación -->
+  <section aria-labelledby="hBal">
+    <div class="sec-head">
+      <h2 id="hBal">Tendencia de generación</h2>
+      <div class="rule"></div>
+      <span class="note">desde la apertura de esta página · pasá el cursor para ver valores</span>
+    </div>
+    <div class="panel trend-panel">
+      <canvas id="trend" height="130"></canvas>
+      <div id="trendTooltip" class="trend-tooltip"></div>
+    </div>
+  </section>
+
+  <!-- Distribución -->
+  <section aria-labelledby="hDist">
+    <div class="sec-head">
+      <h2 id="hDist" class="tag-dist">Distribución — celdas de MT</h2>
+      <div class="rule"></div>
+      <span class="note" id="distNote">—</span>
+    </div>
+    <div class="panel tbl-wrap">
+      <table id="tblDist">
+        <thead>
+          <tr>
+            <th class="sortable" data-k="id">Celda <span class="arrow"></span></th>
+            <th>Barra</th>
+            <th>Estado</th>
+            <th class="sortable" data-k="imax">I máx <span class="arrow"></span></th>
+            <th class="sortable" data-k="p">P <span class="arrow"></span></th>
+            <th>Q</th>
+            <th>fp</th>
+            <th>U</th>
+            <th>f</th>
+            <th>Alarmas</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyDist"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Alarmas -->
+  <section aria-labelledby="hAlm">
+    <div class="sec-head">
+      <h2 id="hAlm">Alarmas</h2>
+      <div class="rule"></div>
+      <span class="note">bits de evento reportados por los relés</span>
+    </div>
+    <div class="alarms" id="alarmList"></div>
+  </section>
+
+</main>
+
+<footer>
+  <span>CERG · Río Grande, Tierra del Fuego</span>
+  <span>Fuentes: <code>/api/protection</code> · <code>/api/genprotection</code></span>
+  <span id="ftInfo"></span>
+</footer>
+
+<dialog id="cfg">
+  <h3>Configuración</h3>
+  <label for="cfgBase">URL del servidor de monitoreo (vacío = mismo servidor)</label>
+  <input id="cfgBase" type="url" spellcheck="false" placeholder="(mismo origen)">
+  <label for="cfgInt">Intervalo de actualización</label>
+  <select id="cfgInt">
+    <option value="2000">2 segundos</option>
+    <option value="5000" selected>5 segundos</option>
+    <option value="10000">10 segundos</option>
+    <option value="30000">30 segundos</option>
+  </select>
+  <div class="row">
+    <button class="btn" id="cfgCancel">Cancelar</button>
+    <button class="btn primary" id="cfgSave">Aplicar</button>
+  </div>
+</dialog>
+
+<script id="app">
+"use strict";
+/* =====================================================================
+   CDC · CERG — Monitor de generación y distribución
+   Fuentes: /api/protection (celdas MT) · /api/genprotection (TG1–TG4)
+   ===================================================================== */
+
+/* ---------------- Configuración ----------------
+   base: URL de NUESTRO backend. Vacío = mismo origen que sirve la página
+   (lo normal en producción). Se puede sobreescribir con ?base= o en el diálogo,
+   útil para desarrollo apuntando a otro host. */
+const DEFAULTS = { base: "", interval: 5000, trendRange: 8*3600 };
+function loadCfg(){
+  try{
+    const raw = localStorage.getItem("cdc_cfg");
+    if(raw){ const c = JSON.parse(raw); return { ...DEFAULTS, ...c }; }
+  }catch(e){ /* almacenamiento no disponible */ }
+  const qp = new URLSearchParams(location.search);
+  const c = { ...DEFAULTS };
+  if(qp.get("base")) c.base = qp.get("base");
+  if(qp.get("trend")) c.trendRange = parseInt(qp.get("trend"),10) || c.trendRange;
+  return c;
+}
+function saveCfg(c){ try{ localStorage.setItem("cdc_cfg", JSON.stringify(c)); }catch(e){} }
+let CFG = loadCfg();
+
+/* ---------------- Utilidades ---------------- */
+const $ = (s, el=document) => el.querySelector(s);
+const nfP = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const nf1 = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const nf3 = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const nf0 = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
+const fmtMW  = v => (Math.abs(v) < 0.005 ? "0,00" : nfP.format(v));
+const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+const EPOCH_2000 = Date.UTC(2000,0,1);
+const relayDate = ms => new Date(EPOCH_2000 + ms);
+const fmtDT = d => d.toLocaleString("es-AR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" });
+
+/* ---------------- Normalización de datos ---------------- */
+/* Celda de MT (/api/protection). p y q ya vienen en MW/MVAr. */
+function normFeeder(f){
+  const bus = f.seca_cerrado && f.secb_cerrado ? "AB"
+            : f.seca_cerrado ? "A"
+            : f.secb_cerrado ? "B" : null;
+  let state = "abierta";
+  if (f.int52_extraido) state = "extraída";
+  else if (f.pat_cerrado) state = "a tierra";
+  else if (f.int52_indefinido) state = "indefinida";
+  else if (f.int52_cerrado) state = "en servicio";
+  const alarmsActive = (f.alarmList||[]).filter(a=>a.alarm_active);
+  return {
+    id: f.id,
+    name: f.nombre_Alimentador || null,
+    kind: f.id === "AC" ? "acople" : (f.mode === 2 ? "aux" : "alim"),
+    bus, state,
+    secA: !!f.seca_cerrado, secB: !!f.secb_cerrado,
+    closed: !!f.int52_cerrado,
+    grounded: !!f.pat_cerrado,
+    out: !!f.int52_extraido,
+    i: [f.ir, f.is, f.it],
+    imax: Math.max(f.ir||0, f.is||0, f.it||0),
+    vll: avg([f.vrs, f.vst, f.vtr].filter(v=>v>1)),
+    p: f.p||0, q: f.q||0,
+    fp: f.fPmed||0, fr: f.fr||0,
+    connected: f.connection_State === 0,
+    alarms: f.alarmList||[],
+    alarmsActiveCount: alarmsActive.length,
+    alarmsUnacked: alarmsActive.filter(a=>!a.alarm_ack).length
+  };
+}
+
+/* Generador (/api/genprotection). p, q, s vienen en W / VA crudos. */
+function normGen(g){
+  const pMW = (g.p||0)/1e6, qMVAr = (g.q||0)/1e6, sMVA = (g.s||0)/1e6;
+  const iL = avg([g.irl, g.isl, g.itl].map(v=>v||0));
+  const iN = avg([g.irn, g.isn, g.itn].map(v=>v||0));
+  const iRef = Math.max(iL, iN);
+  const bus = g.seca_cerrado ? "A" : (g.secb_cerrado ? "B" : null);
+  const running = !!g.int52_cerrado && (iRef > 5 || pMW > 0.5);
+  /* Discrepancia entre juegos de TI línea/neutro con máquina en marcha:
+     en operación sana deben medir prácticamente lo mismo. */
+  const tiMismatch = running && Math.abs(iL - iN) > 0.25 * Math.max(iL, iN, 1);
+  const prot = [g.estProt_1, g.estProt_2, g.estProt_3, g.estProt_4].map(v=>v||0);
+  const protBits = [];
+  prot.forEach((w, wi) => {
+    for(let b=0; b<16; b++) if(w & (1<<b)) protBits.push(`P${wi+1}·b${b}`);
+  });
+  return {
+    id: g.id, bus, running,
+    closed: !!g.int52_cerrado, out: !!g.int52_extraido,
+    pMW, qMVAr, sMVA,
+    fp: g.fPmed||0, fr: g.fr||0,
+    iL, iN, iRef, tiMismatch,
+    vphase: avg([g.vr, g.vs, g.vt].filter(v=>v>1)) / 1000, // kV de fase
+    intPie: !!g.intPie_cerrado, intCe: !!g.intCe_cerrado,
+    ct: { f: g.ctRf, n: g.ctRn }, vt: { f: g.vtRf, n: g.vtRn },
+    protBits,
+    connected: g.connection_State === 0
+  };
+}
+
+function computeTotals(gens, feeders){
+  const genMW  = gens.reduce((a,g)=>a+g.pMW, 0);
+  const alim   = feeders.filter(f=>f.kind==="alim");
+  const aux    = feeders.filter(f=>f.kind==="aux");
+  const distMW = alim.reduce((a,f)=>a+f.p, 0);
+  const auxMW  = aux.reduce((a,f)=>a+f.p, 0);
+  const live   = feeders.filter(f=>f.closed && f.vll > 1);
+  const freq   = avg(live.map(f=>f.fr).filter(v=>v>40));
+  const vll    = avg(live.map(f=>f.vll).filter(v=>v>1));
+  const fpMed  = avg(alim.filter(f=>f.closed && f.p>0.05).map(f=>f.fp));
+  const alarmsActive  = feeders.reduce((a,f)=>a+f.alarmsActiveCount, 0);
+  const alarmsUnacked = feeders.reduce((a,f)=>a+f.alarmsUnacked, 0);
+  return { genMW, distMW, auxMW, diff: genMW - distMW - auxMW,
+           freq, vll, fpMed,
+           gensRunning: gens.filter(g=>g.running).length,
+           feedersOn: alim.filter(f=>f.closed).length, feedersTotal: alim.length,
+           alarmsActive, alarmsUnacked };
+}
+
+/* Totales por barra: solo magnitudes físicamente sumables (P, Q) o promediables (V).
+   No se fabrica una "corriente de barra" porque no medimos ningún CT de acople/entrada,
+   solo corrientes de bahía — sumarlas no representaría una magnitud real. */
+function busSummary(feeders){
+  const mk = busId => {
+    const cells = feeders.filter(f => f.closed && (f.bus === busId || f.bus === "AB") && f.kind !== "acople");
+    const p = cells.reduce((a,f)=>a+f.p, 0);
+    const q = cells.reduce((a,f)=>a+f.q, 0);
+    const v = avg(cells.map(f=>f.vll).filter(v=>v>1));
+    const s = Math.hypot(p, q);
+    return { p, q, v, fp: s>0.01 ? p/s : null };
+  };
+  return { A: mk("A"), B: mk("B") };
+}
+
+/* ---------------- Estado global ---------------- */
+const state = {
+  mode: "boot",          // boot | live | demo | lost
+  lastOk: null,          // Date de la última lectura válida
+  gens: [], feeders: [],
+  history: [],           // {t, gen, dist}
+  sort: { k: null, dir: 1 },
+  failCount: 0,
+  everConnected: false
+};
+
+/* ---------------- Adquisición (vía backend CERG, no el SCADA) ----------------
+   El navegador ya NO consulta ScadaVision. Habla solo con nuestro backend:
+     GET  /api/state          -> snapshot ya normalizado
+     GET  /api/trend?range=   -> histórico de generación (el trend persiste 24/7)
+     GET  /api/stream (SSE)   -> el servidor empuja cada snapshot nuevo
+   El backend es el único con un poller, así que N pestañas = 0 consultas extra
+   al SCADA. El modo demo se conserva como fallback si el backend no responde. */
+
+const API = (CFG.base || "").replace(/\/+$/, ""); // "" => mismo origen que sirve la página
+
+async function fetchJSON(url, timeout=8000){
+  const ctl = new AbortController();
+  const to = setTimeout(()=>ctl.abort(), timeout);
+  try{
+    const r = await fetch(url, { signal: ctl.signal, cache: "no-store" });
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally { clearTimeout(to); }
+}
+
+/* Aplica un snapshot ya normalizado que viene del backend. */
+function applySnapshot(snap){
+  state.feeders = snap.feeders || [];
+  state.gens = snap.gens || [];
+  state.snapTotals = snap.totals || null;
+  state.snapBuses = snap.buses || null;
+  state.mode = "live";
+  state.lastOk = snap.ts ? new Date(snap.ts) : new Date();
+  state.everConnected = true;
+  state.failCount = 0;
+  renderAll();
+}
+
+/* Carga inicial del trend histórico (el gráfico arranca lleno, no vacío). */
+async function loadTrendHistory(){
+  try{
+    const range = CFG.trendRange || 8*3600;
+    const data = await fetchJSON(`${API}/api/trend?range=${range}`);
+    const times = data.ts || [];
+    state.history = times.map((t, i) => {
+      const gensP = {};
+      for(const tg in (data.series||{})) gensP[tg] = data.series[tg][i];
+      return { t: new Date(t).getTime(), gens: gensP };
+    });
+    if(state.history.length) renderTrend();
+  }catch(e){ /* si no hay histórico, el trend se llena en vivo */ }
+}
+
+/* Empuja el snapshot vigente al buffer del trend en vivo. */
+function pushLiveTrendPoint(){
+  const gensP = {};
+  state.gens.forEach(g => { gensP[g.id] = g.pMW; });
+  state.history.push({ t: state.lastOk ? state.lastOk.getTime() : Date.now(), gens: gensP });
+  if(state.history.length > HISTORY_MAX) state.history.shift();
+}
+
+let evtSource = null;
+function connectStream(){
+  if(evtSource){ try{ evtSource.close(); }catch(e){} }
+  try{
+    evtSource = new EventSource(`${API}/api/stream`);
+  }catch(e){ startDemo(); return; }
+
+  evtSource.addEventListener("snapshot", ev => {
+    try{
+      const snap = JSON.parse(ev.data);
+      applySnapshot(snap);
+      pushLiveTrendPoint();
+      renderTrend();
+    }catch(e){ /* ignora frame malformado */ }
+  });
+
+  evtSource.onopen = () => { state.failCount = 0; };
+  evtSource.onerror = () => {
+    /* EventSource reintenta solo; si nunca conectamos, caemos a demo. */
+    state.failCount++;
+    if(state.everConnected){
+      state.mode = "lost";
+      renderStatus();
+    }else if(state.failCount >= 2){
+      startDemo();
+    }
+  };
+}
+
+/* Fallback: intenta un GET /api/state directo (por si SSE está bloqueado
+   por un proxy) antes de rendirse al modo demo. */
+async function bootstrap(){
+  let stateOk = false;
+  try{
+    const snap = await fetchJSON(`${API}/api/state`);
+    applySnapshot(snap);
+    stateOk = true;
+  }catch(e){
+    state.failCount++;  // cuenta hacia el fallback a demo
+  }
+  await loadTrendHistory();
+  connectStream();
+  // Si ni el state inicial respondió, no esperamos indefinidamente: damos un
+  // margen corto al SSE y si tampoco conecta, entramos en demo.
+  if(!stateOk){
+    setTimeout(()=>{
+      if(!state.everConnected) startDemo();
+    }, 2500);
+  }
+}
+
+/* ---------------- Modo demostración ---------------- */
+function startDemo(){
+  if(state.mode === "demo") return;
+  if(evtSource){ try{ evtSource.close(); }catch(e){} evtSource = null; }
+  state.mode = "demo";
+  demoTick();
+  if(!state._demoTimer){
+    state._demoTimer = setInterval(()=>{
+      demoTick();
+      // sigue intentando reconectar al backend real
+      fetchJSON(`${API}/api/state`).then(snap=>{
+        clearInterval(state._demoTimer); state._demoTimer = null;
+        applySnapshot(snap); connectStream();
+      }).catch(()=>{});
+    }, CFG.interval);
+  }
+}
+
+function jitter(v, pct=0.02){ return v * (1 + (Math.random()*2-1)*pct); }
+function demoTick(){
+  const fs = DEMO_FEEDERS.map(f => {
+    const c = { ...f, alarmList: f.alarmList };
+    if(c.int52_cerrado){
+      c.ir = jitter(f.ir); c.is = jitter(f.is); c.it = jitter(f.it);
+      c.p = jitter(f.p); c.q = jitter(f.q, .04);
+      c.fr = jitter(f.fr, .0006);
+    }
+    return c;
+  });
+  const gs = DEMO_GENS.map(g => {
+    const c = { ...g };
+    if(g.p > 1e6){
+      c.p = jitter(g.p, .015); c.q = jitter(g.q, .03); c.s = jitter(g.s, .015);
+      ["irl","isl","itl","irn","isn","itn"].forEach(k=>{ if(g[k]>5) c[k]=jitter(g[k],.015); });
+      c.fr = jitter(g.fr, .0006);
+    }
+    return c;
+  });
+  state.feeders = fs.map(normFeeder);
+  state.gens = gs.map(normGen);
+  state.lastOk = new Date();
+  pushLiveTrendPoint();
+  renderAll();
+}
+
+/* ---------------- Historia / tendencia ---------------- */
+const HISTORY_MAX = 600; // ~50 min a 5 s en vivo (el histórico largo viene del backend)
+function pushHistory(){ pushLiveTrendPoint(); }
+
+
+/* ---------------- Render: estado / header ---------------- */
+function renderStatus(){
+  const dot = $("#stateDot"), txt = $("#stateTxt");
+  dot.className = "dot";
+  $("#bannerDemo").classList.remove("show");
+  $("#bannerLost").classList.remove("show");
+  if(state.mode === "live"){ dot.classList.add("live"); txt.textContent = "EN LÍNEA"; }
+  else if(state.mode === "demo"){
+    dot.classList.add("demo"); txt.textContent = "DEMOSTRACIÓN";
+    $("#demoUrl").textContent = API || location.host;
+    $("#bannerDemo").classList.add("show");
+  }
+  else if(state.mode === "lost"){
+    dot.classList.add("lost"); txt.textContent = "SIN CONEXIÓN";
+    $("#bannerLost").classList.add("show");
+    if(state.lastOk) $("#staleAge").textContent = "hace " + ageTxt(state.lastOk);
+  }
+  else { txt.textContent = "conectando…"; }
+  $("#lastUpd").textContent = state.lastOk ? state.lastOk.toLocaleTimeString("es-AR") : "—";
+}
+function ageTxt(d){
+  const s = Math.round((Date.now()-d.getTime())/1000);
+  if(s < 90) return `${s} s`;
+  return `${Math.round(s/60)} min`;
+}
+
+/* ---------------- Render: KPIs ---------------- */
+function renderKpis(T){
+  $("#kGen").innerHTML  = `${fmtMW(T.genMW)} <small>MW</small>`;
+  $("#kGenSub").textContent = `${T.gensRunning} de ${state.gens.length} máquinas en servicio`;
+  $("#kAux").innerHTML  = `${fmtMW(T.auxMW)} <small>MW</small>`;
+  $("#kAuxSub").textContent = "SA1 · SA2";
+  $("#kFreq").innerHTML = `${nf3.format(T.freq||0)} <small>Hz</small>`;
+  $("#kFreqSub").textContent = `Δ ${nf3.format((T.freq||50)-50)} Hz`;
+  $("#kVolt").innerHTML = `${nfP.format(T.vll||0)} <small>kV</small>`;
+  $("#kVoltSub").textContent = `fp medio ${nfP.format(T.fpMed||0)}`;
+  $("#kAlarm").textContent = String(T.alarmsActive);
+  $("#kAlarm").style.color = T.alarmsActive ? "var(--bad)" : "var(--text)";
+  $("#kAlarmSub").textContent = T.alarmsActive
+    ? `${T.alarmsUnacked} sin reconocer` : "sin alarmas activas";
+}
+
+/* ---------------- Render: unifilar SVG ---------------- */
+const NS = "http://www.w3.org/2000/svg";
+/* Los atributos de presentación SVG no resuelven var(); esos valores
+   se mueven automáticamente al atributo style. */
+const STYLE_KEYS = new Set(["fill","stroke","stroke-width","stroke-dasharray","stroke-linecap","opacity","font-size","font-family","font-weight","letter-spacing","paint-order"]);
+function el(tag, attrs, children){
+  const e = document.createElementNS(NS, tag);
+  let style = "";
+  for(const k in attrs){
+    let v = attrs[k];
+    if(k === "font-size" && typeof v === "number") v = v + "px";
+    if(STYLE_KEYS.has(k)) style += `${k}:${v};`;
+    else e.setAttribute(k, v);
+  }
+  if(style) e.setAttribute("style", style);
+  (children||[]).forEach(c=>e.appendChild(c));
+  return e;
+}
+function txt(t){ return document.createTextNode(t); }
+function vPath(x, y1, y2, crosses){
+  const cs = (crosses||[]).filter(c=>c>y1+9 && c<y2-9).sort((a,b)=>a-b);
+  let d = `M ${x} ${y1}`;
+  for(const c of cs) d += ` L ${x} ${c-7} A 7 7 0 0 1 ${x} ${c+7}`;
+  d += ` L ${x} ${y2}`;
+  return d;
+}
+function breakerSq(x, y, mode, color){
+  /* mode: closed | open | out | gnd | undef */
+  const g = el("g", {});
+  const r = el("rect", { x:x-7, y:y-7, width:14, height:14, rx:2,
+    fill: mode==="closed" ? color : (mode==="gnd" ? "var(--bad)" : "var(--bg)"),
+    stroke: mode==="closed" ? color : (mode==="gnd" ? "var(--bad)" : "var(--faint)"),
+    "stroke-width": 1.4,
+    "stroke-dasharray": mode==="out" ? "3 2" : "none"
+  });
+  g.appendChild(r);
+  if(mode==="out"){
+    g.appendChild(el("path", { d:`M ${x-4} ${y-4} L ${x+4} ${y+4} M ${x+4} ${y-4} L ${x-4} ${y+4}`,
+      stroke:"var(--faint)", "stroke-width":1.4 }));
+  }
+  if(mode==="undef"){
+    const t = el("text", { x, y:y+3.5, "text-anchor":"middle", "font-size":9,
+      fill:"var(--warn)", "font-family":"var(--font-mono)" });
+    t.appendChild(txt("?")); g.appendChild(t);
+  }
+  return g;
+}
+function groundSym(x, y, color){
+  return el("g", {}, [
+    el("path", { d:`M ${x} ${y} v 6`, stroke:color, "stroke-width":1.4 }),
+    el("path", { d:`M ${x-6} ${y+6} h 12 M ${x-4} ${y+9} h 8 M ${x-2} ${y+12} h 4`,
+      stroke:color, "stroke-width":1.4 })
+  ]);
+}
+
+function renderBusSummary(){
+  const bs = (state.mode !== "demo" && state.snapBuses)
+    ? state.snapBuses : busSummary(state.feeders);
+  const box = $("#busSummary");
+  const chip = (id, s, color) => `
+    <div class="bus-chip">
+      <b style="color:${color}">Barra ${id}</b>
+      <span class="v">${s.v>1 ? nfP.format(s.v)+" kV" : "—"}</span>
+      <span>·</span><span class="v">${fmtMW(s.p)} MW</span>
+      <span>·</span><span class="v">${fmtMW(s.q)} MVAr</span>
+      <span>·</span><span>fp ${s.fp!==null ? nfP.format(s.fp) : "—"}</span>
+    </div>`;
+  box.innerHTML = chip("A", bs.A, "var(--gen)") + chip("B", bs.B, "var(--dist)");
+}
+
+function renderDiagram(){
+  const wrap = $("#diagram");
+  wrap.innerHTML = "";
+  const bays = state.feeders.filter(f=>f.kind!=="acople");
+  const coupler = state.feeders.find(f=>f.kind==="acople");
+  const gens = state.gens;
+
+  const W = 1240, H = 390;
+  /* Barra A más cerca de los alimentadores (abajo) · Barra B más cerca de los generadores (arriba) */
+  const yA = 246, yB = 196;
+  const topY = Math.min(yA, yB), bottomY = Math.max(yA, yB);
+  const busX1 = 46, busX2 = 1156;
+  const svg = el("svg", { viewBox:`0 0 ${W} ${H}`, "aria-hidden":"true" });
+
+  /* --- Generadores (arriba, agrupados al centro) --- */
+  const genGap = 150;
+  const genCenterX = (busX1 + busX2) / 2;
+  const gensTotalW = (gens.length - 1) * genGap;
+  const gxs = gens.map((_,i)=> genCenterX - gensTotalW/2 + i*genGap);
+  gens.forEach((g,i)=>{
+    const x = gxs[i];
+    const busY = g.bus === "A" ? yA : yB;
+    const color = g.running ? "var(--gen)" : "var(--off)";
+    const grp = el("g", { class:"bay", tabindex:0, role:"button",
+      "data-target":`gen-${g.id}`, "aria-label":`Generador ${g.id}` });
+    const title = el("title", {});
+    title.appendChild(txt(`${g.id} — ${g.running ? fmtMW(g.pMW)+" MW" : "detenido"} · barra ${g.bus||"—"}`));
+    grp.appendChild(title);
+    /* símbolo generador */
+    grp.appendChild(el("circle", { cx:x, cy:56, r:21, fill:"var(--panel)",
+      stroke:color, "stroke-width":2 }));
+    grp.appendChild(el("path", {
+      d:`M ${x-11} 56 q 5.5 -9 11 0 q 5.5 9 11 0`,
+      fill:"none", stroke:color, "stroke-width":1.8 }));
+    const lbl = el("text", { x, y:24, "text-anchor":"middle", "font-size":15,
+      "font-family":"var(--font-display)", "font-weight":700, fill:"var(--text)",
+      "letter-spacing":".05em" });
+    lbl.appendChild(txt(g.id)); grp.appendChild(lbl);
+    const pv = el("text", { x, y:104, "text-anchor":"middle", "font-size":"11.5px",
+      "font-family":"var(--font-mono)", fill: g.running ? "var(--gen)" : "var(--faint)",
+      "paint-order":"stroke", stroke:"var(--bg)", "stroke-width":"4px" });
+    pv.appendChild(txt(g.running ? `${fmtMW(g.pMW)} MW` : "—")); grp.appendChild(pv);
+    /* bajada + interruptor: cruza la barra superior solo si el destino es la barra inferior */
+    const crosses = busY === bottomY ? [topY] : [];
+    grp.appendChild(el("path", { d: vPath(x, 77, busY, crosses),
+      fill:"none", stroke:color, "stroke-width":"2px",
+      "stroke-dasharray": g.closed ? "none" : "4 4" }));
+    grp.appendChild(el("circle", { cx:x, cy:busY, r:3.2, fill: g.closed ? color : "var(--off)" }));
+    grp.appendChild(breakerSq(x, 140, g.out ? "out" : (g.closed ? "closed" : "open"), color));
+    grp.addEventListener("click", ()=>focusCard(`gen-${g.id}`));
+    grp.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault(); focusCard(`gen-${g.id}`);} });
+    svg.appendChild(grp);
+  });
+
+  /* --- Barras --- */
+  svg.appendChild(el("path", { d:`M ${busX1} ${yA} H ${busX2}`, stroke:"var(--text)", "stroke-width":4, "stroke-linecap":"round", opacity:.92 }));
+  svg.appendChild(el("path", { d:`M ${busX1} ${yB} H ${busX2}`, stroke:"var(--text)", "stroke-width":4, "stroke-linecap":"round", opacity:.92 }));
+  const lA = el("text", { x:busX1+2, y: yA===topY ? yA-10 : yA+20, "font-size":12,
+    "font-family":"var(--font-display)", "font-weight":600, fill:"var(--muted)", "letter-spacing":".08em" });
+  lA.appendChild(txt("BARRA A")); svg.appendChild(lA);
+  const lB = el("text", { x:busX1+2, y: yB===topY ? yB-10 : yB+20, "font-size":12,
+    "font-family":"var(--font-display)", "font-weight":600, fill:"var(--muted)", "letter-spacing":".08em" });
+  lB.appendChild(txt("BARRA B")); svg.appendChild(lB);
+
+  /* --- Acople --- */
+  if(coupler){
+    const x = busX2 + 34;
+    const color = coupler.closed ? "var(--text)" : "var(--off)";
+    const grp = el("g", { class:"bay", tabindex:0, "data-target":"row-AC", "aria-label":"Acople de barras" });
+    const title = el("title", {}); title.appendChild(txt(`Acople AC — ${coupler.state}`)); grp.appendChild(title);
+    grp.appendChild(el("path", { d:`M ${busX2} ${yA} H ${x} V ${yB} H ${busX2}`,
+      fill:"none", stroke:color, "stroke-width":2.4,
+      "stroke-dasharray": coupler.closed ? "none":"4 4" }));
+    grp.appendChild(breakerSq(x, (yA+yB)/2, coupler.closed ? "closed" : "open", "var(--text)"));
+    const t = el("text", { x:x+14, y:(yA+yB)/2+4, "font-size":11,
+      "font-family":"var(--font-mono)", fill:"var(--muted)" });
+    t.appendChild(txt("AC")); grp.appendChild(t);
+    grp.addEventListener("click", ()=>focusCard("row-AC"));
+    grp.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault(); focusCard("row-AC");} });
+    svg.appendChild(grp);
+  }
+
+  /* --- Alimentadores (abajo) --- */
+  const n = bays.length;
+  const bayX0 = busX1 + 92;
+  const step = (busX2 - bayX0 - 26) / Math.max(n-1, 1);
+  bays.forEach((f, i)=>{
+    const x = bayX0 + i*step;
+    const busY = f.bus === "A" ? yA : (f.bus === "B" ? yB : yB);
+    const baseColor = f.kind==="aux" ? "var(--aux)" : "var(--dist)";
+    const color = f.out ? "var(--off)" : (f.closed ? baseColor : "var(--off)");
+    const grp = el("g", { class:"bay", tabindex:0, role:"button",
+      "data-target":`row-${f.id}`, "aria-label":`Celda ${f.id}` });
+    const title = el("title", {});
+    title.appendChild(txt(`${f.id}${f.name ? " · "+f.name : ""} — ${f.state} · ${fmtMW(f.p)} MW · ${nf0.format(f.imax)} A`));
+    grp.appendChild(title);
+    if(f.bus){
+      const crosses = busY === topY ? [bottomY] : [];
+      grp.appendChild(el("path", { d: vPath(x, busY, 330, crosses),
+        fill:"none", stroke:color, "stroke-width":"1.8px",
+        "stroke-dasharray": f.closed ? "none" : "4 4" }));
+    } else {
+      /* celda sin barra asignada (p. ej. extraída): muñón aislado, sin tocar las barras */
+      grp.appendChild(el("path", { d:`M ${x} 268 V 330`,
+        fill:"none", stroke:"var(--off)", "stroke-width":"1.8px", "stroke-dasharray":"4 4" }));
+    }
+    /* Seccionadores a barra A y a barra B, mostrados por separado del interruptor 52
+       (así queda visible cuál seccionador está cerrado, no solo el resultado combinado) */
+    [["A",yA],["B",yB]].forEach(([bId,y])=>{
+      const secClosed = bId==="A" ? f.secA : f.secB;
+      grp.appendChild(el("circle", { cx:x, cy:y, r:2.6,
+        fill: secClosed ? "var(--text)" : "var(--bg)",
+        stroke: secClosed ? "var(--text)" : "var(--faint)", "stroke-width":"1.1px" }));
+    });
+    const alarmed = f.alarmsUnacked > 0;
+    const mode = f.out ? "out" : f.grounded ? "gnd" : f.state==="indefinida" ? "undef" : f.closed ? "closed" : "open";
+    grp.appendChild(breakerSq(x, 296, mode, alarmed ? "var(--bad)" : baseColor));
+    if(f.grounded) grp.appendChild(groundSym(x, 330, "var(--bad)"));
+    /* etiqueta */
+    const lb = el("text", { x, y:352, "text-anchor":"middle", "font-size":11.5,
+      class: "bay-label" + (f.out ? " dim" : ""),
+      "font-family":"var(--font-mono)", "font-weight":600 });
+    lb.appendChild(txt(f.id)); grp.appendChild(lb);
+    const pv = el("text", { x, y:367, "text-anchor":"middle", "font-size":9.5,
+      "font-family":"var(--font-mono)", fill: f.closed && f.p>0.01 ? color : "var(--faint)" });
+    pv.appendChild(txt(f.closed ? nf1.format(f.p) : "—")); grp.appendChild(pv);
+    /* punto de alarma, más visible si hay alguna sin reconocer */
+    if(f.alarmsActiveCount){
+      grp.appendChild(el("circle", { cx:x+19, cy:348, r: alarmed ? 4.2 : 3.5,
+        fill:"var(--bad)", class:"alarm-dot" }));
+    }
+    grp.addEventListener("click", ()=>focusCard(`row-${f.id}`));
+    grp.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault(); focusCard(`row-${f.id}`);} });
+    svg.appendChild(grp);
+  });
+
+  wrap.appendChild(svg);
+}
+
+function focusCard(id){
+  const t = document.getElementById(id);
+  if(!t) return;
+  t.scrollIntoView({ behavior:"smooth", block:"center" });
+  t.classList.remove("flash");
+  void t.offsetWidth;
+  t.classList.add("flash");
+}
+
+/* ---------------- Render: generadores ---------------- */
+function renderGens(){
+  const grid = $("#genGrid");
+  grid.innerHTML = "";
+  const maxP = Math.max(30, ...state.gens.map(g=>g.pMW));
+  state.gens.forEach(g=>{
+    const card = document.createElement("article");
+    card.className = "gen-card" + (g.running ? " running" : "");
+    card.id = `gen-${g.id}`;
+    const flags = [];
+    if(g.tiMismatch) flags.push(`<span class="badge warn" title="Los TI de lado línea y lado neutro miden distinto con la máquina en marcha: revisar cableado/relación de TI">⚠ Δ TI línea/neutro</span>`);
+    if(!g.connected) flags.push(`<span class="badge bad">sin comunicación</span>`);
+    g.protBits.forEach(b=>flags.push(`<span class="badge" title="Palabra de estado de protección">${b}</span>`));
+    card.innerHTML = `
+      <div class="top">
+        <span class="gid">${g.id}</span>
+        <span class="badge ${g.bus==="A"?"busA":"busB"}">Barra ${g.bus||"—"}</span>
+        <span class="badge ${g.running?"on":"off"}" style="margin-left:auto">${g.running?"EN SERVICIO":"DETENIDO"}</span>
+      </div>
+      <div class="pw">${fmtMW(g.pMW)} <small>MW</small></div>
+      <div class="meterbar"><i style="width:${Math.max(0, Math.min(100, g.pMW/maxP*100))}%"></i></div>
+      <dl class="kv">
+        <dt>Reactiva</dt><dd>${fmtMW(g.qMVAr)} MVAr</dd>
+        <dt>Aparente</dt><dd>${fmtMW(g.sMVA)} MVA</dd>
+        <dt>Factor de potencia</dt><dd>${g.running ? nfP.format(g.fp) : "—"}</dd>
+        <dt>I lado línea</dt><dd>${nf0.format(g.iL)} A</dd>
+        <dt>I lado neutro</dt><dd>${nf0.format(g.iN)} A</dd>
+        <dt>Tensión de fase</dt><dd>${nfP.format(g.vphase)} kV</dd>
+        <dt>Frecuencia</dt><dd>${nf3.format(g.fr)} Hz</dd>
+        <dt>Relación TI (f / n)</dt><dd>${g.ct.f} / ${g.ct.n}</dd>
+      </dl>
+      <div class="flags">
+        <span class="badge">52 ${g.closed?"cerrado":"abierto"}</span>
+        <span class="badge">pie ${g.intPie?"cerrado":"abierto"}</span>
+        <span class="badge">campo ${g.intCe?"cerrado":"abierto"}</span>
+        ${flags.join("")}
+      </div>`;
+    grid.appendChild(card);
+  });
+  const T = computeTotals(state.gens, state.feeders);
+  $("#genNote").textContent = `${T.gensRunning} en servicio · ${fmtMW(T.genMW)} MW totales`;
+}
+
+/* ---------------- Render: tendencia de generación ---------------- */
+const GEN_COLORS = ["#FFB454", "#5BC8F5", "#B79BF2", "#FF8A80", "#8BE28B", "#F2C879"];
+const TREND_PAD = { l:44, r:10, t:16, b:18 };
+let trendHoverIdx = null; // índice en state.history bajo el cursor, o null
+
+function renderTrend(){
+  const cv = $("#trend");
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth || 600, h = 130;
+  cv.width = w*dpr; cv.height = h*dpr;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0,0,w,h);
+  const H = state.history;
+  const ids = state.gens.map(g=>g.id);
+  if(H.length < 2 || !ids.length){
+    ctx.fillStyle = "rgba(115,136,172,.7)";
+    ctx.font = "12px IBM Plex Mono, monospace";
+    ctx.fillText("acumulando historia…", 10, 20);
+    $("#trendTooltip").style.display = "none";
+    return;
+  }
+  const pad = TREND_PAD;
+  /* Autoescala con piso fijo en 0 MW y techo mínimo de 30 MW: si algún generador
+     supera los 30 MW el gráfico crece para mostrarlo completo, pero nunca colapsa
+     a rangos chicos ni baja de 0. */
+  const vals = H.flatMap(p => ids.map(id => p.gens ? p.gens[id] : undefined)).filter(v=>v!==undefined);
+  const dataMax = Math.max(0, ...vals);
+  const vmin = 0;
+  const vmax = Math.max(30, dataMax * 1.12);
+  const X = i => pad.l + (w-pad.l-pad.r) * (i/(H.length-1));
+  const Y = v => pad.t + (h-pad.t-pad.b) * (1 - (v-vmin)/(vmax-vmin));
+  /* grilla horizontal */
+  ctx.strokeStyle = "rgba(29,43,71,.9)"; ctx.lineWidth = 1;
+  ctx.fillStyle = "rgba(115,136,172,.8)";
+  ctx.font = "10px IBM Plex Mono, monospace";
+  for(let k=0;k<=3;k++){
+    const v = vmin + (vmax-vmin)*k/3;
+    const y = Y(v);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y); ctx.stroke();
+    ctx.fillText(nf1.format(v), 4, y+3);
+  }
+  /* una línea de potencia activa por generador */
+  ids.forEach((id, gi) => {
+    const color = GEN_COLORS[gi % GEN_COLORS.length];
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = "round";
+    ctx.beginPath();
+    let started = false;
+    H.forEach((p,i)=>{
+      const v = p.gens ? p.gens[id] : undefined;
+      if(v === undefined) return;
+      const x = X(i), y = Y(v);
+      if(!started){ ctx.moveTo(x,y); started = true; } else { ctx.lineTo(x,y); }
+    });
+    ctx.stroke();
+  });
+  /* leyenda: un ítem por generador, coloreado igual que su línea */
+  ctx.font = "10px IBM Plex Mono, monospace";
+  const legendStep = 62;
+  ids.forEach((id, gi) => {
+    const color = GEN_COLORS[gi % GEN_COLORS.length];
+    ctx.fillStyle = color;
+    ctx.fillText(`● ${id}`, pad.l + 4 + gi*legendStep, 12);
+  });
+
+  /* --- Cursor / crosshair interactivo --- */
+  const tip = $("#trendTooltip");
+  if(trendHoverIdx !== null && H[trendHoverIdx]){
+    const idx = Math.max(0, Math.min(H.length-1, trendHoverIdx));
+    const p = H[idx];
+    const x = X(idx);
+    ctx.strokeStyle = "rgba(220,230,247,.35)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, h-pad.b); ctx.stroke();
+    let rows = "";
+    ids.forEach((id, gi) => {
+      const v = p.gens ? p.gens[id] : undefined;
+      if(v === undefined) return;
+      const color = GEN_COLORS[gi % GEN_COLORS.length];
+      const y = Y(v);
+      ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI*2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.strokeStyle = "var(--bg)"; ctx.lineWidth = 1.4; ctx.stroke();
+      rows += `<div class="tt-row"><span class="tt-dot" style="background:${color}"></span>${id} · ${fmtMW(v)} MW</div>`;
+    });
+    tip.innerHTML = `<span class="tt-time">${new Date(p.t).toLocaleTimeString("es-AR")}</span>${rows}`;
+    const left = Math.max(4, Math.min(w - 150, x + 10));
+    tip.style.left = left + "px";
+    tip.style.display = "block";
+  } else {
+    tip.style.display = "none";
+  }
+}
+
+/* Cursor sobre el eje X: mueve el crosshair y la tarjeta de valores */
+(function initTrendCursor(){
+  const cv = $("#trend");
+  const pickIndex = clientX => {
+    const H = state.history;
+    if(H.length < 2) return null;
+    const rect = cv.getBoundingClientRect();
+    const w = rect.width, pad = TREND_PAD;
+    const frac = (clientX - rect.left - pad.l) / Math.max(1, (w - pad.l - pad.r));
+    return Math.max(0, Math.min(H.length-1, Math.round(frac * (H.length-1))));
+  };
+  cv.addEventListener("mousemove", e=>{
+    trendHoverIdx = pickIndex(e.clientX);
+    renderTrend();
+  });
+  cv.addEventListener("mouseleave", ()=>{
+    trendHoverIdx = null;
+    renderTrend();
+  });
+  cv.addEventListener("touchstart", e=>{
+    if(e.touches[0]){ trendHoverIdx = pickIndex(e.touches[0].clientX); renderTrend(); }
+  }, { passive:true });
+  cv.addEventListener("touchmove", e=>{
+    if(e.touches[0]){ trendHoverIdx = pickIndex(e.touches[0].clientX); renderTrend(); }
+  }, { passive:true });
+  cv.addEventListener("touchend", ()=>{
+    trendHoverIdx = null;
+    renderTrend();
+  });
+})();
+
+/* ---------------- Render: tabla de distribución ---------------- */
+function stateCellHTML(f){
+  if(f.out) return `<span class="st out"><span class="sq"></span>extraída</span>`;
+  if(f.grounded) return `<span class="st gnd"><span class="sq"></span>a tierra</span>`;
+  if(f.state==="indefinida") return `<span class="st open"><span class="sq"></span>indefinida</span>`;
+  if(f.closed) return `<span class="st closed"><span class="sq"></span>en servicio</span>`;
+  return `<span class="st open"><span class="sq"></span>abierta</span>`;
+}
+function renderTable(){
+  const tb = $("#tbodyDist");
+  tb.innerHTML = "";
+  let rows = state.feeders.filter(f=>f.kind!=="acople");
+  const coupler = state.feeders.find(f=>f.kind==="acople");
+  const { k, dir } = state.sort;
+  if(k){
+    rows = [...rows].sort((a,b)=>{
+      if(k==="id") return dir * String(a.id).localeCompare(String(b.id), "es", { numeric:true });
+      return dir * ((a[k]||0) - (b[k]||0));
+    });
+  }
+  if(coupler) rows = [...rows, coupler];
+  const maxP = Math.max(0.1, ...rows.map(r=>r.p));
+  rows.forEach(f=>{
+    const tr = document.createElement("tr");
+    tr.id = `row-${f.id}`;
+    if(f.out) tr.classList.add("is-out");
+    const busTxt = f.bus==="AB" ? "A+B" : (f.bus || "—");
+    const kindTag = f.kind==="aux" ? ` <span class="badge" style="color:var(--aux); border-color:var(--aux)">SSAA</span>`
+                  : f.kind==="acople" ? ` <span class="badge">acople</span>` : "";
+    tr.innerHTML = `
+      <td class="cell-id">${f.id}${f.name ? `<br><span style="font-weight:400;color:var(--muted);font-size:10.5px">${f.name}</span>` : ""}${kindTag}</td>
+      <td>${busTxt}</td>
+      <td>${stateCellHTML(f)}</td>
+      <td>${nf0.format(f.imax)} A</td>
+      <td><span class="loadbar"><i style="width:${Math.min(100, f.p/maxP*100)}%"></i></span>${fmtMW(f.p)} MW</td>
+      <td>${fmtMW(f.q)}</td>
+      <td>${f.closed && f.p>0.02 ? nfP.format(f.fp) : "—"}</td>
+      <td>${f.vll>1 ? nfP.format(f.vll)+" kV" : "—"}</td>
+      <td>${f.fr>40 ? nf3.format(f.fr) : "—"}</td>
+      <td>${f.alarmsActiveCount ? `<span class="alm-chip">${f.alarmsActiveCount} activa${f.alarmsActiveCount>1?"s":""}</span>` : ""}</td>`;
+    tb.appendChild(tr);
+  });
+  const T = computeTotals(state.gens, state.feeders);
+  $("#distNote").textContent = `${T.feedersOn}/${T.feedersTotal} en servicio · ${fmtMW(T.distMW)} MW`;
+}
+
+/* orden por columnas */
+document.querySelectorAll("th.sortable").forEach(th=>{
+  th.addEventListener("click", ()=>{
+    const k = th.dataset.k;
+    if(state.sort.k === k) state.sort.dir *= -1;
+    else { state.sort.k = k; state.sort.dir = k==="id" ? 1 : -1; }
+    document.querySelectorAll("th.sortable .arrow").forEach(a=>a.textContent="");
+    th.querySelector(".arrow").textContent = state.sort.dir>0 ? "▲" : "▼";
+    renderTable();
+  });
+});
+
+/* ---------------- Render: alarmas ---------------- */
+function renderAlarms(){
+  const box = $("#alarmList");
+  box.innerHTML = "";
+  const items = [];
+  state.feeders.forEach(f=>{
+    (f.alarms||[]).forEach(a=>{
+      if(a.alarm_active) items.push({ cell:f.id, ...a });
+    });
+  });
+  items.sort((a,b)=>b.datetime - a.datetime);
+  if(!items.length){
+    box.innerHTML = `<div class="empty">Sin alarmas activas en las celdas de MT.</div>`;
+    return;
+  }
+  items.forEach(a=>{
+    const d = relayDate(a.datetime);
+    const div = document.createElement("div");
+    div.className = "alarm-item" + (a.alarm_ack ? " acked" : "");
+    div.innerHTML = `
+      <span class="cell">${a.cell}</span>
+      <span>bit de evento <b>${a.eventBitNumber}</b></span>
+      <span class="badge ${a.alarm_ack ? "" : "bad"}">${a.alarm_ack ? "reconocida" : "SIN RECONOCER"}</span>
+      <time title="Fecha estimada (época 01/01/2000 del relé)">≈ ${fmtDT(d)}</time>`;
+    box.appendChild(div);
+  });
+}
+
+/* ---------------- Render total ---------------- */
+function renderAll(){
+  // En vivo, los totales y por-barra ya vienen calculados por el backend
+  // (misma lógica que el front). En demo se recomputan localmente.
+  const T = (state.mode !== "demo" && state.snapTotals)
+    ? state.snapTotals : computeTotals(state.gens, state.feeders);
+  renderStatus();
+  renderKpis(T);
+  renderBusSummary();
+  renderDiagram();
+  renderGens();
+  renderTrend();
+  renderTable();
+  renderAlarms();
+  const src = state.mode === "demo" ? "datos simulados" : (API || location.host);
+  $("#ftInfo").textContent = state.mode === "demo"
+    ? "datos simulados (sin conexión al servidor)"
+    : `${src} · tiempo real (SSE)`;
+}
+
+/* ---------------- Reloj ---------------- */
+setInterval(()=>{
+  $("#clock").textContent = new Date().toLocaleTimeString("es-AR");
+  if(state.mode === "lost" && state.lastOk) $("#staleAge").textContent = "hace " + ageTxt(state.lastOk);
+}, 1000);
+
+window.addEventListener("resize", ()=>{ if(state.history.length) renderTrend(); });
+
+/* ---------------- Configuración UI ---------------- */
+const dlg = $("#cfg");
+$("#btnCfg").addEventListener("click", ()=>{
+  $("#cfgBase").value = CFG.base;
+  $("#cfgInt").value = String(CFG.interval);
+  dlg.showModal();
+});
+$("#cfgCancel").addEventListener("click", ()=>dlg.close());
+$("#cfgSave").addEventListener("click", ()=>{
+  const base = $("#cfgBase").value.trim().replace(/\/+$/,"");
+  const interval = parseInt($("#cfgInt").value, 10) || 5000;
+  CFG = { ...CFG, base, interval };
+  saveCfg(CFG);
+  state.mode = "boot"; state.failCount = 0; state.everConnected = false;
+  if(state._demoTimer){ clearInterval(state._demoTimer); state._demoTimer = null; }
+  dlg.close();
+  location.reload(); // recarga simple: re-bootstrap contra la nueva base
+});
+
+/* =====================================================================
+   Datos de demostración (instantánea real anonimizada del 13/07/2026)
+   Se usan SOLO si la API no responde; se marcan claramente en pantalla.
+   ===================================================================== */
+const DEMO_FEEDERS = [
+{"mode":1,"ip":"10.10.1.18","id":"A0","ir":59,"is":60,"it":61,"vrs":13.459,"vst":13.458,"vtr":13.545,"p":1.376,"q":0.255,"fr":50.039,"fPmed":0.983,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.1","id":"A1","ir":5,"is":5,"it":5,"vrs":13.478,"vst":13.449,"vtr":13.516,"p":0.124,"q":0.047,"fr":50.049,"fPmed":0.93,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.2","id":"A2","ir":95,"is":99,"it":101,"vrs":13.449,"vst":13.449,"vtr":13.545,"p":2.219,"q":0.63,"fr":50.039,"fPmed":0.961,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.3","id":"A3","ir":117,"is":119,"it":118,"vrs":13.468,"vst":13.43,"vtr":13.526,"p":2.671,"q":0.58,"fr":50.044,"fPmed":0.977,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.4","id":"A4","ir":59,"is":55,"it":60,"vrs":13.468,"vst":13.43,"vtr":13.517,"p":1.361,"q":0.434,"fr":50.04,"fPmed":0.951,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.5","id":"A5","ir":127,"is":128,"it":129,"vrs":13.44,"vst":13.468,"vtr":13.507,"p":2.848,"q":0.871,"fr":50.047,"fPmed":0.956,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.6","id":"A6","ir":66,"is":61,"it":65,"vrs":13.459,"vst":13.458,"vtr":13.526,"p":1.418,"q":0.379,"fr":50.038,"fPmed":0.967,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.7","id":"A7","ir":73,"is":75,"it":71,"vrs":13.468,"vst":13.468,"vtr":13.536,"p":1.609,"q":0.576,"fr":50.045,"fPmed":0.94,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.8","id":"A8","ir":134,"is":135,"it":141,"vrs":13.497,"vst":13.478,"vtr":13.535,"p":3.062,"q":0.868,"fr":50.043,"fPmed":0.962,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.9","id":"A9","ir":208,"is":212,"it":211,"vrs":13.449,"vst":13.478,"vtr":13.488,"p":4.862,"q":0.986,"fr":50.039,"fPmed":0.98,"seca_cerrado":false,"secb_cerrado":true,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.10","id":"A10","ir":73,"is":71,"it":72,"vrs":13.478,"vst":13.459,"vtr":13.545,"p":1.634,"q":0.381,"fr":50.039,"fPmed":0.973,"seca_cerrado":false,"secb_cerrado":true,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.11","id":"A11","ir":106,"is":105,"it":103,"vrs":13.459,"vst":13.44,"vtr":13.545,"p":2.402,"q":0.439,"fr":50.038,"fPmed":0.983,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.12","id":"A12","ir":97,"is":98,"it":103,"vrs":13.458,"vst":13.44,"vtr":13.507,"p":2.293,"q":0.381,"fr":50.045,"fPmed":0.986,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.13","id":"A13","ir":232,"is":238,"it":232,"vrs":13.449,"vst":13.468,"vtr":13.526,"p":5.218,"q":1.335,"fr":50.048,"fPmed":0.967,"seca_cerrado":false,"secb_cerrado":true,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.14","id":"A14","ir":156,"is":159,"it":155,"vrs":13.478,"vst":13.468,"vtr":13.526,"p":3.602,"q":0.727,"fr":50.043,"fPmed":0.98,"seca_cerrado":false,"secb_cerrado":true,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.15","id":"A15","ir":119,"is":120,"it":120,"vrs":13.449,"vst":13.478,"vtr":13.516,"p":2.68,"q":0.899,"fr":50.04,"fPmed":0.946,"seca_cerrado":false,"secb_cerrado":true,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.16","id":"A16","ir":1,"is":1,"it":0,"vrs":0,"vst":0,"vtr":0,"p":0,"q":0,"fr":0,"fPmed":1,"seca_cerrado":false,"secb_cerrado":false,"int52_cerrado":false,"int52_abierto":true,"int52_indefinido":false,"int52_extraido":true,"pat_cerrado":true,"connection_State":0,"alarmList":[{"eventBitNumber":128,"alarm_active":true,"alarm_ack":true,"datetime":836386280430},{"eventBitNumber":133,"alarm_active":true,"alarm_ack":true,"datetime":836401647677}]},
+{"mode":1,"ip":"10.10.1.17","id":"A17","ir":233,"is":232,"it":233,"vrs":13.487,"vst":13.449,"vtr":13.497,"p":5.22,"q":1.244,"fr":50.048,"fPmed":0.972,"seca_cerrado":false,"secb_cerrado":true,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":2,"ip":"10.10.1.41","id":"SA1","ir":13,"is":14,"it":14,"vrs":13.44,"vst":13.449,"vtr":13.526,"p":0.304,"q":0.137,"fr":50.048,"fPmed":0.908,"seca_cerrado":false,"secb_cerrado":true,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":2,"ip":"10.10.1.42","id":"SA2","ir":4,"is":4,"it":4,"vrs":13.468,"vst":13.449,"vtr":13.536,"p":0.052,"q":0.086,"fr":50.048,"fPmed":0.511,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]},
+{"mode":1,"ip":"10.10.1.44","id":"AC","ir":0,"is":0,"it":0,"vrs":13.478,"vst":13.497,"vtr":13.536,"p":0,"q":0,"fr":50.042,"fPmed":0.455,"seca_cerrado":true,"secb_cerrado":true,"int52_cerrado":true,"int52_abierto":false,"int52_indefinido":false,"int52_extraido":false,"pat_cerrado":false,"connection_State":0,"alarmList":[]}
+];
+const DEMO_GENS = [
+{"ip":"10.10.1.101","id":"TG1","irl":0,"isl":0.4,"itl":0,"irn":0.4,"isn":0.4,"itn":0.4,"vr":7788,"vs":7788,"vt":7788,"p":0,"q":0,"s":0,"fPmed":0,"fr":50.03,"ctRf":200,"ctRn":100,"vtRf":120,"vtRn":76,"seca_cerrado":false,"secb_cerrado":true,"int52_cerrado":true,"int52_extraido":false,"intPie_cerrado":false,"intCe_cerrado":false,"estProt_1":0,"estProt_2":0,"estProt_3":2048,"estProt_4":0,"connection_State":0},
+{"ip":"10.10.1.102","id":"TG2","irl":0,"isl":0,"itl":0,"irn":0,"isn":0,"itn":0,"vr":7800,"vs":7788,"vt":7752,"p":-2199,"q":0,"s":35186,"fPmed":1,"fr":50.03,"ctRf":200,"ctRn":100,"vtRf":120,"vtRn":76,"seca_cerrado":false,"secb_cerrado":true,"int52_cerrado":true,"int52_extraido":false,"intPie_cerrado":false,"intCe_cerrado":true,"estProt_1":0,"estProt_2":0,"estProt_3":2048,"estProt_4":0,"connection_State":0},
+{"ip":"10.10.1.103","id":"TG3","irl":771,"isl":777,"itl":779.4,"irn":769.5,"isn":776.4,"itn":778.8,"vr":7776,"vs":7776,"vt":7776,"p":17204966,"q":5659825,"s":18039284,"fPmed":0.95,"fr":50.03,"ctRf":300,"ctRn":1,"vtRf":120,"vtRn":1,"seca_cerrado":false,"secb_cerrado":true,"int52_cerrado":true,"int52_extraido":false,"intPie_cerrado":true,"intCe_cerrado":false,"estProt_1":0,"estProt_2":0,"estProt_3":0,"estProt_4":0,"connection_State":0},
+{"ip":"10.10.1.104","id":"TG4","irl":0,"isl":0,"itl":0.8,"irn":1206.4,"isn":1217.2,"itn":1216,"vr":7788,"vs":7800,"vt":7788,"p":27802052,"q":6089973,"s":28344222,"fPmed":0.98,"fr":50.05,"ctRf":400,"ctRn":10,"vtRf":120,"vtRn":31,"seca_cerrado":true,"secb_cerrado":false,"int52_cerrado":true,"int52_extraido":false,"intPie_cerrado":true,"intCe_cerrado":false,"estProt_1":0,"estProt_2":0,"estProt_3":0,"estProt_4":0,"connection_State":0}
+];
+
+/* ---------------- Arranque ---------------- */
+bootstrap();
+</script>
+</body>
+</html>

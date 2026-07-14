@@ -1,0 +1,26 @@
+[Unit]
+Description=CERG CDC - Poller (único consumidor del SCADA)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cerg
+Group=cerg
+WorkingDirectory=/opt/cerg-cdc
+EnvironmentFile=/etc/cerg-cdc/cerg-cdc.env
+ExecStart=/opt/cerg-cdc/venv/bin/python -m app.poller
+Restart=always
+RestartSec=5
+# El poller es liviano; límites de resguardo.
+MemoryMax=256M
+
+# Endurecimiento básico
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cerg-cdc
+
+[Install]
+WantedBy=multi-user.target

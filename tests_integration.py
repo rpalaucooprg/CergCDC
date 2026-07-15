@@ -141,6 +141,15 @@ def run():
     assert len(s["gens"]) == 3 and len(s["feeders"]) == 5
     assert s["totals"]["gensRunning"] == 2
     print(f"  OK: {len(s['gens'])} gens, {len(s['feeders'])} feeders, {s['totals']['gensRunning']} en servicio")
+
+    # Nombres de línea inyectados desde celdas.json (dato de referencia)
+    by_id = {f["id"]: f for f in s["feeders"]}
+    assert by_id["A0"]["name"] == "Chacra 11", by_id["A0"]["name"]
+    assert by_id["A9"]["name"] == "Irigoyen", by_id["A9"]["name"]
+    assert by_id["AC"]["name"] == "Acoplamiento", by_id["AC"]["name"]
+    gen_by_id = {g["id"]: g for g in s["gens"]}
+    assert gen_by_id["TG3"]["name"] == "Generador 3", gen_by_id["TG3"]["name"]
+    print(f"  OK nombres: A0={by_id['A0']['name']!r}, A9={by_id['A9']['name']!r}, TG3={gen_by_id['TG3']['name']!r}")
     print(f"  buses A: p={s['buses']['A']['p']:.3f} MW  B: p={s['buses']['B']['p']:.3f} MW")
 
     print("\n=== /api/trend ===")

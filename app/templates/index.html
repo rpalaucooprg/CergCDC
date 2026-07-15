@@ -187,6 +187,10 @@ section{margin-bottom:26px}
 .gen-card .gid{
   font-family:var(--font-display); font-size:22px; font-weight:700; letter-spacing:.05em;
 }
+.gen-card .gname{
+  font-size:13px; color:var(--muted); font-weight:500;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px;
+}
 .badge{
   font-size:10px; letter-spacing:.1em; text-transform:uppercase;
   border:1px solid var(--line); border-radius:5px; padding:2px 7px; color:var(--muted);
@@ -605,6 +609,11 @@ const relayDate = ms => new Date(EPOCH_2000 + ms);
 const fmtDT = d => d.toLocaleString("es-AR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" });
 
 /* ---------------- Normalización de datos ---------------- */
+/* Nombre de línea de referencia (state.names, de /api/celdas). Se accede por
+   este helper a propósito: dentro de normFeeder hay una variable local `state`
+   (el estado de la celda) que sombrearía al `state` global. */
+function nombreRef(id){ return (state.names && state.names[id]) || null; }
+
 /* Celda de MT (/api/protection). p y q ya vienen en MW/MVAr. */
 function normFeeder(f){
   const bus = f.seca_cerrado && f.secb_cerrado ? "AB"
@@ -618,7 +627,7 @@ function normFeeder(f){
   const alarmsActive = (f.alarmList||[]).filter(a=>a.alarm_active);
   return {
     id: f.id,
-    name: f.nombre_Alimentador || null,
+    name: f.nombre_Alimentador || nombreRef(f.id),
     kind: f.id === "AC" ? "acople" : (f.mode === 2 ? "aux" : "alim"),
     bus, state,
     secA: !!f.seca_cerrado, secB: !!f.secb_cerrado,
@@ -654,7 +663,8 @@ function normGen(g){
     for(let b=0; b<16; b++) if(w & (1<<b)) protBits.push(`P${wi+1}·b${b}`);
   });
   return {
-    id: g.id, bus, running,
+    id: g.id, name: g.name || nombreRef(g.id),
+    bus, running,
     closed: !!g.int52_cerrado, out: !!g.int52_extraido,
     pMW, qMVAr, sMVA,
     fp: g.fPmed||0, fr: g.fr||0,
@@ -707,6 +717,7 @@ const state = {
   lastOk: null,          // Date de la última lectura válida
   gens: [], feeders: [],
   history: [],           // {t, gen, dist}
+  names: {},             // Id -> nombre de línea (dato de referencia, /api/celdas)
   sort: { k: null, dir: 1 },
   failCount: 0,
   everConnected: false
@@ -730,6 +741,18 @@ async function fetchJSON(url, timeout=8000){
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally { clearTimeout(to); }
+}
+
+/* Carga el mapeo Id -> nombre de línea (dato de referencia estático). Se usa
+   como respaldo de nombres, sobre todo en modo demo; los snapshots en vivo ya
+   traen el nombre inyectado por el backend. */
+async function loadCeldas(){
+  try{
+    const map = await fetchJSON(`${API}/api/celdas`);
+    const names = {};
+    for(const id in map){ if(map[id] && map[id].nombre) names[id] = map[id].nombre; }
+    state.names = names;
+  }catch(e){ /* sin referencia: se usan los nombres que traiga el snapshot */ }
 }
 
 /* Aplica un snapshot ya normalizado que viene del backend. */
@@ -815,6 +838,7 @@ function connectStream(){
 /* Fallback: intenta un GET /api/state directo (por si SSE está bloqueado
    por un proxy) antes de rendirse al modo demo. */
 async function bootstrap(){
+  await loadCeldas();   // nombres de referencia antes del primer render
   let stateOk = false;
   try{
     const snap = await fetchJSON(`${API}/api/state`);
@@ -1024,6 +1048,13 @@ function renderBusSummary(){
   box.innerHTML = chip("A", bs.A, "var(--gen)") + chip("B", bs.B, "var(--dist)");
 }
 
+/* Trunca nombres largos para las etiquetas del unifilar (el nombre completo
+   queda siempre en el tooltip <title> de la bahía). */
+function truncName(s){
+  if(!s) return "";
+  return s.length > 13 ? s.slice(0, 12) + "…" : s;
+}
+
 function renderDiagram(){
   const wrap = $("#diagram");
   wrap.innerHTML = "";
@@ -1031,7 +1062,7 @@ function renderDiagram(){
   const coupler = state.feeders.find(f=>f.kind==="acople");
   const gens = state.gens;
 
-  const W = 1240, H = 390;
+  const W = 1240, H = 398;
   /* Barra A más cerca de los alimentadores (abajo) · Barra B más cerca de los generadores (arriba) */
   const yA = 246, yB = 196;
   const topY = Math.min(yA, yB), bottomY = Math.max(yA, yB);
@@ -1050,7 +1081,7 @@ function renderDiagram(){
     const grp = el("g", { class:"bay", tabindex:0, role:"button",
       "data-target":`gen-${g.id}`, "aria-label":`Generador ${g.id}` });
     const title = el("title", {});
-    title.appendChild(txt(`${g.id} — ${g.running ? fmtMW(g.pMW)+" MW" : "detenido"} · barra ${g.bus||"—"}`));
+    title.appendChild(txt(`${g.id}${g.name ? " · "+g.name : ""} — ${g.running ? fmtMW(g.pMW)+" MW" : "detenido"} · barra ${g.bus||"—"}`));
     grp.appendChild(title);
     /* símbolo generador */
     grp.appendChild(el("circle", { cx:x, cy:56, r:21, fill:"var(--panel)",
@@ -1066,6 +1097,11 @@ function renderDiagram(){
       "font-family":"var(--font-mono)", fill: g.running ? "var(--gen)" : "var(--faint)",
       "paint-order":"stroke", stroke:"var(--bg)", "stroke-width":"4px" });
     pv.appendChild(txt(g.running ? `${fmtMW(g.pMW)} MW` : "—")); grp.appendChild(pv);
+    if(g.name){
+      const gnm = el("text", { x, y:118, "text-anchor":"middle", "font-size":8.5,
+        "font-family":"var(--font-body)", fill:"var(--muted)" });
+      gnm.appendChild(txt(truncName(g.name))); grp.appendChild(gnm);
+    }
     /* bajada + interruptor: cruza la barra superior solo si el destino es la barra inferior */
     const crosses = busY === bottomY ? [topY] : [];
     grp.appendChild(el("path", { d: vPath(x, 77, busY, crosses),
@@ -1142,12 +1178,19 @@ function renderDiagram(){
     const mode = f.out ? "out" : f.grounded ? "gnd" : f.state==="indefinida" ? "undef" : f.closed ? "closed" : "open";
     grp.appendChild(breakerSq(x, 296, mode, alarmed ? "var(--bad)" : baseColor));
     if(f.grounded) grp.appendChild(groundSym(x, 330, "var(--bad)"));
-    /* etiqueta */
-    const lb = el("text", { x, y:352, "text-anchor":"middle", "font-size":11.5,
+    /* etiqueta: Id (mono) + nombre de línea (truncado, nombre completo en el
+       tooltip <title>) + potencia */
+    const lb = el("text", { x, y:349, "text-anchor":"middle", "font-size":11.5,
       class: "bay-label" + (f.out ? " dim" : ""),
       "font-family":"var(--font-mono)", "font-weight":600 });
     lb.appendChild(txt(f.id)); grp.appendChild(lb);
-    const pv = el("text", { x, y:367, "text-anchor":"middle", "font-size":9.5,
+    if(f.name){
+      const nm = el("text", { x, y:361, "text-anchor":"middle", "font-size":8.5,
+        class: "bay-name" + (f.out ? " dim" : ""),
+        "font-family":"var(--font-body)", fill:"var(--muted)" });
+      nm.appendChild(txt(truncName(f.name))); grp.appendChild(nm);
+    }
+    const pv = el("text", { x, y: f.name ? 373 : 364, "text-anchor":"middle", "font-size":9.5,
       "font-family":"var(--font-mono)", fill: f.closed && f.p>0.01 ? color : "var(--faint)" });
     pv.appendChild(txt(f.closed ? nf1.format(f.p) : "—")); grp.appendChild(pv);
     /* punto de alarma, más visible si hay alguna sin reconocer */
@@ -1188,6 +1231,7 @@ function renderGens(){
     card.innerHTML = `
       <div class="top">
         <span class="gid">${g.id}</span>
+        ${g.name ? `<span class="gname">${g.name}</span>` : ""}
         <span class="badge ${g.bus==="A"?"busA":"busB"}">Barra ${g.bus||"—"}</span>
         <span class="badge ${g.running?"on":"off"}" style="margin-left:auto">${g.running?"EN SERVICIO":"DETENIDO"}</span>
       </div>

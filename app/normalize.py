@@ -128,6 +128,7 @@ def norm_gen(g: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "id": g.get("id"),
+        "name": None,  # lo completa build_snapshot desde celdas.json
         "bus": bus,
         "running": running,
         "closed": bool(g.get("int52_cerrado")),
@@ -201,8 +202,19 @@ def build_snapshot(raw_feeders: list[dict], raw_gens: list[dict],
     """Arma el snapshot completo que consume el front, a partir de los JSON
     crudos de ambos endpoints. Este es el objeto que se publica por SSE y que
     devuelve GET /api/state."""
+    from .celdas import nombre as celda_nombre
+
     feeders = [norm_feeder(f) for f in raw_feeders]
     gens = [norm_gen(g) for g in raw_gens]
+
+    # Nombre de línea (dato de referencia, no del SCADA). El archivo auxiliar
+    # celdas.json tiene prioridad; si no está mapeado, se conserva el nombre que
+    # eventualmente traiga el SCADA (nombre_Alimentador, en norm_feeder).
+    for f in feeders:
+        f["name"] = celda_nombre(f["id"]) or f.get("name")
+    for g in gens:
+        g["name"] = celda_nombre(g["id"]) or g.get("name")
+
     totals = compute_totals(gens, feeders)
     buses = bus_summary(feeders)
     return {

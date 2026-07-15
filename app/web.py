@@ -3,6 +3,7 @@ Web — Flask + gevent.
 
 Sirve el tablero y expone:
   GET /                 -> HTML del dashboard
+  GET /api/celdas       -> mapeo Id -> {tipo, nombre} (dato de referencia)
   GET /api/state        -> último snapshot (lee caché en DB, NO consulta SCADA)
   GET /api/trend?range= -> trend histórico de generación
   GET /api/trend/feeder?id=&range= -> trend histórico de una celda
@@ -22,7 +23,7 @@ import time
 import psycopg
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 
-from . import config, db
+from . import celdas, config, db
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=os.path.join(_HERE, "static"))
@@ -42,6 +43,15 @@ def healthz():
         return jsonify(status="ok"), 200
     except Exception as e:  # noqa: BLE001
         return jsonify(status="error", detail=str(e)), 503
+
+
+@app.route("/api/celdas")
+def api_celdas():
+    """Mapeo Id -> {tipo, nombre} de las celdas (dato de referencia estático).
+    El front lo usa como respaldo de nombres; los snapshots ya traen el nombre
+    inyectado, así que este endpoint es sobre todo para el modo demo y consumo
+    externo."""
+    return jsonify(celdas.CELDAS)
 
 
 @app.route("/api/state")

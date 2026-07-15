@@ -62,8 +62,10 @@ app/
   normalize.py   # interpretación del SCADA (FUENTE DE VERDAD de los campos crudos)
   config.py      # configuración por variables de entorno
   db.py          # acceso a PostgreSQL (pool, escrituras, lecturas)
+  celdas.py      # carga celdas.json (nombres de línea, dato de referencia)
+  celdas.json    # AUXILIAR editable: Id -> {tipo, nombre de línea}
   poller.py      # servicio: SCADA -> normaliza -> persiste -> pg_notify
-  web.py         # Flask: /, /api/state, /api/trend, /api/alarms, /api/stream, /healthz
+  web.py         # Flask: /, /api/state, /api/celdas, /api/trend, /api/alarms, /api/stream, /healthz
   templates/index.html  # dashboard (SSE + modo demo)
 sql/schema.sql   # esquema PostgreSQL (histórico crudo)
 deploy/          # systemd units, env example, install.sh, lxc-bootstrap.sh, nginx (referencia)
@@ -77,6 +79,7 @@ README.md
 | Ruta | Descripción |
 |------|-------------|
 | `GET /` | Dashboard (sirve `templates/index.html` estático) |
+| `GET /api/celdas` | Mapeo `Id -> {tipo, nombre}` (dato de referencia de `celdas.json`) |
 | `GET /api/state` | Último snapshot normalizado (lee caché en DB) |
 | `GET /api/trend?range=SEG` | Trend de generación por TG, con downsampling |
 | `GET /api/trend/feeder?id=CELDA&range=SEG` | Trend histórico de UNA celda (P, Q, I máx, U, fp); mismo downsampling que el de generación |
@@ -98,6 +101,14 @@ estaba en el front. Puntos clave:
 - **Celdas (feeders):** 22 celdas de 13,2 kV. `A0`–`A17` alimentadores, `SA1`/`SA2`
   auxiliares (`mode==2`), `AC` acople de barras. Doble juego de barras (A/B):
   `seca_cerrado`/`secb_cerrado` indican a qué barra está conectada cada celda.
+- **Nombres de línea (dato de referencia, NO del SCADA):** los operadores conocen
+  las celdas por el nombre de la línea (Mosconi, Irigoyen, Rio Chico 1…), no por el
+  Id. El mapeo `Id -> {tipo, nombre}` vive en el archivo auxiliar `app/celdas.json`
+  (editable a mano). `app/celdas.py` lo carga y `build_snapshot` inyecta `name` en
+  cada celda y generador (prioridad: `celdas.json` > `nombre_Alimentador` del SCADA).
+  El front lo muestra en unifilar, tabla, tarjetas de generador y modal de detalle;
+  como respaldo (modo demo) también lo pide por `GET /api/celdas`. Si se edita el
+  JSON, reiniciar `cerg-poller` y `cerg-web` para recargarlo (se lee al importar).
 - **Generadores:** TG1–TG4. Doble juego de TI: línea (`irl/isl/itl`) y neutro
   (`irn/isn/itn`), esquema 87G. `intPie_cerrado` = pie de máquina (acople físico).
 - **Pie de máquina = potencia real:** si `intPie_cerrado` es **false**, la máquina

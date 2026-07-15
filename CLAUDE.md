@@ -65,7 +65,7 @@ app/
   celdas.py      # carga celdas.json (nombres de línea, dato de referencia)
   celdas.json    # AUXILIAR editable: Id -> {tipo, nombre de línea}
   poller.py      # servicio: SCADA -> normaliza -> persiste -> pg_notify
-  web.py         # Flask: /, /api/state, /api/celdas, /api/trend, /api/alarms, /api/stream, /healthz
+  web.py         # Flask: /, /api/state, /api/celdas, /api/trend, /api/alarms, /api/stream, /api/connections, /healthz
   templates/index.html  # dashboard (SSE + modo demo)
 sql/schema.sql   # esquema PostgreSQL (histórico crudo)
 deploy/          # systemd units, env example, install.sh, lxc-bootstrap.sh, nginx (referencia)
@@ -85,9 +85,24 @@ README.md
 | `GET /api/trend/feeder?id=CELDA&range=SEG` | Trend histórico de UNA celda (P, Q, I máx, U, fp); mismo downsampling que el de generación |
 | `GET /api/alarms?limit=N` | Últimos eventos de alarma |
 | `GET /api/stream` | SSE: empuja cada snapshot nuevo (LISTEN/NOTIFY) |
+| `GET /api/connections` | Monitor de conexiones SSE en tiempo real (protegido por contraseña) |
 | `GET /healthz` | Chequeo de salud |
 
 **Ningún endpoint consulta ScadaVision.** Todo sale de PostgreSQL.
+
+### Monitor de conexiones
+
+`GET /api/connections` lista los clientes SSE conectados en tiempo real (IP,
+antigüedad, user-agent). Se accede desde el botón de configuración (engranaje) →
+"Monitor de conexiones", protegido por la contraseña `CDC_MONITOR_PASSWORD`
+(viaja en la cabecera `X-Monitor-Password`, nunca en la URL). Si la variable no
+está seteada, el endpoint responde 503 y el monitor queda **desactivado**.
+
+Las conexiones se registran en la tabla `sse_connection` (no en memoria) porque
+hay **2 workers de gunicorn** y cada uno vería solo las suyas: `/api/stream` da
+de alta al abrir, refresca `last_seen` en cada keepalive y da de baja al cerrar;
+las filas huérfanas se purgan por `last_seen` (`CDC_SSE_STALE_SECONDS`). La IP
+real llega en `X-Forwarded-For` (el reverse proxy corre en IPFire).
 
 ## Dominio: cómo interpretar el SCADA (crítico)
 

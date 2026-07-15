@@ -60,3 +60,12 @@ TREND_MAX_RANGE = _int("CDC_TREND_MAX_RANGE", 7 * 24 * 3600)
 TREND_MAX_POINTS = _int("CDC_TREND_MAX_POINTS", 600)
 # Cada cuánto el SSE manda un keepalive si no hubo snapshot (segundos).
 SSE_KEEPALIVE = _float("CDC_SSE_KEEPALIVE", 20.0)
+
+# --- Monitor de conexiones ---
+# Contraseña para ver el monitor de conexiones (GET /api/connections). Si queda
+# vacía, el endpoint responde 503: el monitor está DESACTIVADO por defecto (no
+# expone datos sin contraseña).
+MONITOR_PASSWORD = os.environ.get("CDC_MONITOR_PASSWORD", "")
+# Una conexión SSE se considera "viva" si su last_seen es más reciente que esto.
+# Se refresca en cada keepalive; con 3x el keepalive se toleran cortes breves.
+SSE_STALE_SECONDS = _int("CDC_SSE_STALE_SECONDS", int(SSE_KEEPALIVE * 3))

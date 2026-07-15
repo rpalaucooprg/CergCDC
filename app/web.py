@@ -9,6 +9,7 @@ Sirve el tablero y expone:
   GET /api/trend/feeder?id=&range= -> trend histórico de una celda
   GET /api/alarms       -> últimos eventos de alarma
   GET /api/stream       -> SSE: empuja cada snapshot nuevo (LISTEN/NOTIFY)
+  GET /api/connections  -> monitor de conexiones SSE (protegido por contraseña)
   GET /healthz          -> chequeo de salud
 
 Ningún endpoint consulta ScadaVision: todo sale de PostgreSQL, que llena el
@@ -16,9 +17,11 @@ poller. Con esto, N navegadores = 0 consultas extra al SCADA.
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import time
+import uuid
 
 import psycopg
 from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
@@ -106,13 +109,28 @@ def api_stream():
     LISTEN al canal, y cada vez que llega un NOTIFY relee el snapshot y lo
     empuja. Manda un evento inicial con el estado actual y keepalives
     periódicos para que proxies no corten la conexión.
+
+    Registra la conexión en sse_connection (monitor de conexiones): alta al
+    abrir, refresco de last_seen en cada keepalive, baja al cerrar.
     """
+    # Datos del cliente: se capturan acá (dentro del contexto de request). El
+    # reverse proxy corre en IPFire, así que la IP real viene en X-Forwarded-For.
+    xff = request.headers.get("X-Forwarded-For", "")
+    client_ip = xff.split(",")[0].strip() if xff else (request.remote_addr or None)
+    user_agent = request.headers.get("User-Agent") or None
+    session_id = uuid.uuid4().hex
+
     @stream_with_context
     def gen():
         # Estado inicial inmediato.
         snap = db.read_snapshot()
         if snap:
             yield _sse("snapshot", snap)
+
+        try:
+            db.sse_register(session_id, client_ip, user_agent)
+        except Exception:  # noqa: BLE001
+            pass  # el monitor es accesorio: no debe tumbar el stream
 
         conn = psycopg.connect(config.DATABASE_URL, autocommit=True)
         try:
@@ -130,6 +148,10 @@ def api_stream():
                 if not got and (now - last_keepalive) >= config.SSE_KEEPALIVE:
                     yield ": keepalive\n\n"
                     last_keepalive = now
+                    try:
+                        db.sse_touch(session_id)
+                    except Exception:  # noqa: BLE001
+                        pass
                 elif got:
                     last_keepalive = now
         finally:
@@ -138,6 +160,10 @@ def api_stream():
             except Exception:  # noqa: BLE001
                 pass
             conn.close()
+            try:
+                db.sse_unregister(session_id)
+            except Exception:  # noqa: BLE001
+                pass
 
     headers = {
         "Content-Type": "text/event-stream",
@@ -146,6 +172,27 @@ def api_stream():
         "Connection": "keep-alive",
     }
     return Response(gen(), headers=headers)
+
+
+@app.route("/api/connections")
+def api_connections():
+    """Monitor de conexiones SSE en tiempo real, protegido por contraseña.
+
+    La contraseña se pasa en la cabecera X-Monitor-Password (no en la URL, para
+    no dejarla en logs/historial). Sin CDC_MONITOR_PASSWORD configurada el
+    monitor queda desactivado (503): no se exponen datos sin contraseña.
+    """
+    pw = config.MONITOR_PASSWORD
+    if not pw:
+        return jsonify(error="monitor desactivado: falta CDC_MONITOR_PASSWORD"), 503
+    given = request.headers.get("X-Monitor-Password", "")
+    # Comparación en tiempo constante para no filtrar la clave por timing.
+    if not hmac.compare_digest(given, pw):
+        return jsonify(error="no autorizado"), 401
+    try:
+        return jsonify(db.read_connections(config.SSE_STALE_SECONDS))
+    except Exception as e:  # noqa: BLE001
+        return jsonify(error=f"no disponible: {e}"), 503
 
 
 def _sse(event: str, data) -> str:

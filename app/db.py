@@ -266,6 +266,69 @@ def read_feeder_trend(feeder_id: str, range_seconds: int, max_points: int) -> di
     return {"id": feeder_id, "ts": times, "series": series, "bucket_seconds": bucket}
 
 
+# ------------------------------------------------------------------
+# Conexiones SSE (monitor en tiempo real)
+# ------------------------------------------------------------------
+def sse_register(session_id: str, ip: str | None, user_agent: str | None) -> None:
+    """Registra (o refresca) una conexión SSE activa."""
+    with get_pool().connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO sse_connection (session_id, ip, user_agent, connected_at, last_seen)
+            VALUES (%s, %s, %s, now(), now())
+            ON CONFLICT (session_id) DO UPDATE
+              SET last_seen = now()
+            """,
+            (session_id, ip, user_agent),
+        )
+        conn.commit()
+
+
+def sse_touch(session_id: str) -> None:
+    """Marca que la conexión sigue viva (se llama en cada keepalive)."""
+    with get_pool().connection() as conn:
+        conn.execute(
+            "UPDATE sse_connection SET last_seen = now() WHERE session_id = %s",
+            (session_id,),
+        )
+        conn.commit()
+
+
+def sse_unregister(session_id: str) -> None:
+    """Elimina una conexión SSE al cerrarse limpiamente."""
+    with get_pool().connection() as conn:
+        conn.execute("DELETE FROM sse_connection WHERE session_id = %s", (session_id,))
+        conn.commit()
+
+
+def read_connections(stale_seconds: int) -> list[dict[str, Any]]:
+    """Lista de conexiones SSE vivas. Purga primero las huérfanas (clientes que
+    se cayeron sin cierre limpio) usando last_seen."""
+    with get_pool().connection() as conn:
+        conn.execute(
+            "DELETE FROM sse_connection WHERE last_seen < now() - make_interval(secs => %s)",
+            (stale_seconds,),
+        )
+        conn.commit()
+        rows = conn.execute(
+            """
+            SELECT session_id, ip, user_agent, connected_at, last_seen
+            FROM sse_connection
+            ORDER BY connected_at ASC
+            """
+        ).fetchall()
+    out = []
+    for r in rows:
+        out.append({
+            "id": (r["session_id"] or "")[:8],
+            "ip": r["ip"],
+            "userAgent": r["user_agent"],
+            "connectedAt": r["connected_at"].isoformat() if r["connected_at"] else None,
+            "lastSeen": r["last_seen"].isoformat() if r["last_seen"] else None,
+        })
+    return out
+
+
 def read_recent_alarms(limit: int = 50) -> list[dict[str, Any]]:
     with get_pool().connection() as conn:
         rows = conn.execute(

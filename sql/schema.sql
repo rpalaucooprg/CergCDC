@@ -86,6 +86,22 @@ CREATE TABLE IF NOT EXISTS alarm_state (
 );
 
 -- ------------------------------------------------------------------
+-- Conexiones SSE activas (monitor de conexiones en tiempo real).
+-- El web registra una fila al abrir un stream, refresca last_seen en cada
+-- keepalive y la borra al cerrar. Vive en la base (no en memoria) porque hay
+-- varios workers de gunicorn y cada uno veria solo sus propias conexiones.
+-- Las filas huerfanas (cliente caido sin cierre limpio) se purgan por last_seen.
+-- ------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sse_connection (
+    session_id   TEXT        PRIMARY KEY,
+    ip           TEXT,
+    user_agent   TEXT,
+    connected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sse_conn_seen ON sse_connection (last_seen DESC);
+
+-- ------------------------------------------------------------------
 -- Canal de notificacion para SSE (LISTEN/NOTIFY).
 -- El poller ejecuta:  NOTIFY cdc_snapshot;  al terminar cada ciclo.
 -- El web hace LISTEN cdc_snapshot y reenvia por SSE.

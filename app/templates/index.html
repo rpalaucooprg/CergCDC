@@ -1213,7 +1213,11 @@ function renderTrend(){
     ctx.fillText(fmtTick(tms), tx, h - 5);
   }
   ctx.textAlign = "left";
-  /* una línea de potencia activa por generador */
+  /* una línea de potencia activa por generador. Un generador detenido lee 0
+     (el backend fuerza 0 con el pie de maquina abierto); esos tramos NO se
+     grafican: la linea se corta y queda hueco, en vez de una linea plana en 0.
+     Umbral chico para tolerar ruido residual de medicion. */
+  const STOPPED_MW = 0.05;
   ids.forEach((id, gi) => {
     const color = GEN_COLORS[gi % GEN_COLORS.length];
     ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = "round";
@@ -1221,7 +1225,11 @@ function renderTrend(){
     let started = false;
     H.forEach((p,i)=>{
       const v = p.gens ? p.gens[id] : undefined;
-      if(v === undefined) return;
+      if(v === undefined || v <= STOPPED_MW){
+        // sin dato o generador detenido -> cortar la linea (hueco)
+        started = false;
+        return;
+      }
       const x = X(i), y = Y(v);
       if(!started){ ctx.moveTo(x,y); started = true; } else { ctx.lineTo(x,y); }
     });
@@ -1249,6 +1257,11 @@ function renderTrend(){
       const v = p.gens ? p.gens[id] : undefined;
       if(v === undefined) return;
       const color = GEN_COLORS[gi % GEN_COLORS.length];
+      if(v <= STOPPED_MW){
+        // generador detenido en ese instante: sin punto, se indica en texto
+        rows += `<div class="tt-row"><span class="tt-dot" style="background:${color};opacity:.4"></span>${id} · detenido</div>`;
+        return;
+      }
       const y = Y(v);
       ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI*2);
       ctx.fillStyle = color; ctx.fill();

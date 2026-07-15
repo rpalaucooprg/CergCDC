@@ -99,7 +99,19 @@ def norm_gen(g: dict[str, Any]) -> dict[str, Any]:
     i_ref = max(i_l, i_n)
 
     bus = "A" if g.get("seca_cerrado") else ("B" if g.get("secb_cerrado") else None)
-    running = bool(g.get("int52_cerrado")) and (i_ref > 5 or p_mw > 0.5)
+
+    # El pie de maquina (intPie) es la condicion fisica de acople: si esta
+    # ABIERTO, la maquina esta desacoplada y su potencia DEBE ser 0, sin
+    # importar lo que midan los TI. El SCADA a veces reporta valores espurios
+    # de P/Q con la maquina parada; se fuerzan a 0 aqui, en origen, para que
+    # esos picos falsos no lleguen a la base ni al grafico.
+    foot_closed = bool(g.get("intPie_cerrado"))
+    if not foot_closed:
+        p_mw = 0.0
+        q_mvar = 0.0
+        s_mva = 0.0
+
+    running = foot_closed and bool(g.get("int52_cerrado")) and (i_ref > 5 or p_mw > 0.5)
 
     # Discrepancia entre juegos de TI línea/neutro con la máquina en marcha:
     # en operación sana ambos juegos deben medir casi lo mismo.

@@ -1463,6 +1463,11 @@ function renderAlarms(){
 
 /* ---------------- Render total ---------------- */
 function renderAll(){
+  // El refresco de los valores en vivo del modal de detalle va PRIMERO y
+  // aislado en su propio try/catch: si alguna función de render posterior
+  // lanzara una excepción (y el try/catch del handler de SSE la silenciara),
+  // los valores del modal se actualizan igual y no quedan congelados.
+  try{ refreshFeederDetailLive(); }catch(e){ /* no bloquear el resto del render */ }
   // En vivo, los totales y por-barra ya vienen calculados por el backend
   // (misma lógica que el front). En demo se recomputan localmente.
   const T = (state.mode !== "demo" && state.snapTotals)
@@ -1475,14 +1480,6 @@ function renderAll(){
   renderTrend();
   renderTable();
   renderAlarms();
-  // Si el modal de detalle está abierto, refrescá sus valores actuales en vivo.
-  if($("#feederDetail").open && fd.id){
-    const f = state.feeders.find(x=>x.id === fd.id) || null;
-    if(f){
-      $("#fdSub").textContent = `${feederKindText(f)} · Barra ${fdBus(f)} · ${feederStateText(f)}`;
-      renderFeederKpis(f);
-    }
-  }
   const src = state.mode === "demo" ? "datos simulados" : (API || location.host);
   $("#ftInfo").textContent = state.mode === "demo"
     ? "datos simulados (sin conexión al servidor)"
@@ -1530,6 +1527,18 @@ function renderFeederKpis(f){
   ];
   box.innerHTML = items.map(([k,v])=>
     `<div class="fd-kpi"><span class="fd-k">${k}</span><span class="fd-v">${v}</span></div>`).join("");
+}
+
+/* Refresca solo los valores actuales del modal (encabezado + KPIs) con el
+   snapshot vigente, si está abierto. El gráfico histórico NO se recarga acá:
+   se refresca solo al abrir o al cambiar de magnitud/ventana. */
+function refreshFeederDetailLive(){
+  const dlg = $("#feederDetail");
+  if(!dlg || !dlg.open || !fd.id) return;
+  const f = state.feeders.find(x=>x.id === fd.id);
+  if(!f) return;
+  $("#fdSub").textContent = `${feederKindText(f)} · Barra ${fdBus(f)} · ${feederStateText(f)}`;
+  renderFeederKpis(f);
 }
 
 function fdMsg(text){

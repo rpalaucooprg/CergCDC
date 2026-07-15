@@ -254,6 +254,7 @@ tbody td{
   font-family:var(--font-mono); white-space:nowrap;
 }
 tbody tr:hover{background:rgba(91,200,245,.04)}
+tbody tr.fd-clickable{cursor:pointer}
 tbody tr.flash{animation:flashrow 1.6s ease}
 @keyframes flashrow{0%{background:rgba(91,200,245,.22)} 100%{background:transparent}}
 td.cell-id{font-weight:600}
@@ -310,6 +311,39 @@ dialog#cfg .row{display:flex; gap:10px; justify-content:flex-end; margin-top:18p
   padding:8px 16px; font-size:13px;
 }
 .btn.primary{background:var(--dist); border-color:var(--dist); color:#06121C; font-weight:600}
+
+/* ---------- Detalle de celda (modal con histórico) ---------- */
+dialog#feederDetail{
+  background:var(--panel-2); color:var(--text);
+  border:1px solid var(--line); border-radius:14px; padding:20px;
+  max-width:780px; width:calc(100% - 32px);
+}
+dialog#feederDetail::backdrop{background:rgba(4,8,16,.72); backdrop-filter:blur(3px)}
+.fd-head{display:flex; align-items:flex-start; gap:12px; margin-bottom:14px}
+.fd-head h3{
+  font-family:var(--font-display); font-weight:700; letter-spacing:.05em;
+  text-transform:uppercase; font-size:21px; line-height:1.1;
+}
+.fd-sub{font-size:12px; color:var(--muted); margin-top:3px}
+.fd-head .icon-btn{margin-left:auto; font-family:var(--font-mono); font-size:15px}
+.fd-kpis{
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(90px, 1fr));
+  gap:8px; margin-bottom:16px;
+}
+.fd-kpi{background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:7px 10px}
+.fd-kpi .fd-k{font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); display:block}
+.fd-kpi .fd-v{font-family:var(--font-mono); font-size:14px; margin-top:2px; display:block}
+.fd-controls{display:flex; gap:10px; flex-wrap:wrap; justify-content:space-between; margin-bottom:10px}
+.fd-chart-wrap{
+  position:relative; background:var(--panel); border:1px solid var(--line);
+  border-radius:10px; padding:8px 4px;
+}
+canvas#fdChart{width:100%; height:220px; display:block; cursor:crosshair}
+.fd-msg{
+  position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+  text-align:center; padding:24px; color:var(--muted); font-size:13px; line-height:1.5;
+}
+.fd-msg.show{display:flex}
 
 footer{
   max-width:1360px; margin:0 auto; padding:10px 20px 30px;
@@ -391,7 +425,7 @@ footer{
     <div class="sec-head">
       <h2 id="hUnifilar">Unifilar de barras 13,2 kV</h2>
       <div class="rule"></div>
-      <span class="note">clic en una celda para ver su detalle</span>
+      <span class="note">clic en una celda para ver su histórico</span>
     </div>
     <div class="panel">
       <div class="bus-summary" id="busSummary"></div>
@@ -499,6 +533,36 @@ footer{
   <div class="row">
     <button class="btn" id="cfgCancel">Cancelar</button>
     <button class="btn primary" id="cfgSave">Aplicar</button>
+  </div>
+</dialog>
+
+<dialog id="feederDetail" aria-labelledby="fdTitle">
+  <div class="fd-head">
+    <div>
+      <h3 id="fdTitle">—</h3>
+      <div class="fd-sub" id="fdSub">—</div>
+    </div>
+    <button class="icon-btn" id="fdClose" title="Cerrar" aria-label="Cerrar">✕</button>
+  </div>
+  <div class="fd-kpis" id="fdKpis"></div>
+  <div class="fd-controls">
+    <div class="range-sel" id="fdMetricSel" role="group" aria-label="Magnitud a graficar">
+      <button type="button" data-metric="p">P</button>
+      <button type="button" data-metric="imax">I</button>
+      <button type="button" data-metric="q">Q</button>
+      <button type="button" data-metric="vll">U</button>
+    </div>
+    <div class="range-sel" id="fdRangeSel" role="group" aria-label="Ventana de tiempo del histórico">
+      <button type="button" data-range="3600">1 h</button>
+      <button type="button" data-range="21600">6 h</button>
+      <button type="button" data-range="43200">12 h</button>
+      <button type="button" data-range="86400">24 h</button>
+    </div>
+  </div>
+  <div class="fd-chart-wrap">
+    <canvas id="fdChart" height="220"></canvas>
+    <div id="fdTooltip" class="trend-tooltip"></div>
+    <div class="fd-msg" id="fdMsg"></div>
   </div>
 </dialog>
 
@@ -1037,8 +1101,8 @@ function renderDiagram(){
     const t = el("text", { x:x+14, y:(yA+yB)/2+4, "font-size":11,
       "font-family":"var(--font-mono)", fill:"var(--muted)" });
     t.appendChild(txt("AC")); grp.appendChild(t);
-    grp.addEventListener("click", ()=>focusCard("row-AC"));
-    grp.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault(); focusCard("row-AC");} });
+    grp.addEventListener("click", ()=>openFeederDetail("AC"));
+    grp.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault(); openFeederDetail("AC");} });
     svg.appendChild(grp);
   }
 
@@ -1091,8 +1155,8 @@ function renderDiagram(){
       grp.appendChild(el("circle", { cx:x+19, cy:348, r: alarmed ? 4.2 : 3.5,
         fill:"var(--bad)", class:"alarm-dot" }));
     }
-    grp.addEventListener("click", ()=>focusCard(`row-${f.id}`));
-    grp.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault(); focusCard(`row-${f.id}`);} });
+    grp.addEventListener("click", ()=>openFeederDetail(f.id));
+    grp.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault(); openFeederDetail(f.id);} });
     svg.appendChild(grp);
   });
 
@@ -1333,6 +1397,9 @@ function renderTable(){
   rows.forEach(f=>{
     const tr = document.createElement("tr");
     tr.id = `row-${f.id}`;
+    tr.classList.add("fd-clickable");
+    tr.title = "Ver histórico de esta celda";
+    tr.addEventListener("click", ()=>openFeederDetail(f.id));
     if(f.out) tr.classList.add("is-out");
     const busTxt = f.bus==="AB" ? "A+B" : (f.bus || "—");
     const kindTag = f.kind==="aux" ? ` <span class="badge" style="color:var(--aux); border-color:var(--aux)">SSAA</span>`
@@ -1408,11 +1475,225 @@ function renderAll(){
   renderTrend();
   renderTable();
   renderAlarms();
+  // Si el modal de detalle está abierto, refrescá sus valores actuales en vivo.
+  if($("#feederDetail").open && fd.id){
+    const f = state.feeders.find(x=>x.id === fd.id) || null;
+    if(f){
+      $("#fdSub").textContent = `${feederKindText(f)} · Barra ${fdBus(f)} · ${feederStateText(f)}`;
+      renderFeederKpis(f);
+    }
+  }
   const src = state.mode === "demo" ? "datos simulados" : (API || location.host);
   $("#ftInfo").textContent = state.mode === "demo"
     ? "datos simulados (sin conexión al servidor)"
     : `${src} · tiempo real (SSE)`;
 }
+
+/* ---------------- Detalle de celda: histórico por alimentador ----------------
+   Al hacer clic en una fila de la tabla o en una celda del unifilar se abre un
+   modal con los valores actuales y un gráfico histórico. Los datos salen de
+   GET /api/trend/feeder (una consulta trae P, Q, I máx y U; el selector alterna
+   la magnitud sin re-consultar). El selector de ventana sí re-consulta. */
+const FD_METRICS = {
+  p:    { key:"p",    label:"Potencia activa",   unit:"MW",   color:"#5BC8F5", fmt:v=>nfP.format(v), zero:true  },
+  imax: { key:"imax", label:"Corriente máxima",  unit:"A",    color:"#FFB454", fmt:v=>nf0.format(v),  zero:true  },
+  q:    { key:"q",    label:"Potencia reactiva", unit:"MVAr", color:"#B79BF2", fmt:v=>nfP.format(v), zero:false },
+  vll:  { key:"vll",  label:"Tensión compuesta", unit:"kV",   color:"#8BE28B", fmt:v=>nfP.format(v), zero:false }
+};
+const FD_PAD = { l:52, r:12, t:18, b:26 };
+const fd = { id:null, range:43200, metric:"p", data:null, hoverIdx:null };
+
+function feederStateText(f){
+  if(f.out) return "extraída";
+  if(f.grounded) return "a tierra";
+  if(f.state === "indefinida") return "indefinida";
+  if(f.closed) return "en servicio";
+  return "abierta";
+}
+function feederKindText(f){
+  return f.kind==="aux" ? "Servicios auxiliares"
+       : f.kind==="acople" ? "Acople de barras" : "Alimentador";
+}
+function fdBus(f){ return f.bus==="AB" ? "A+B" : (f.bus || "—"); }
+
+function renderFeederKpis(f){
+  const box = $("#fdKpis");
+  if(!f){ box.innerHTML = ""; return; }
+  const items = [
+    ["Estado", feederStateText(f)],
+    ["Barra", fdBus(f)],
+    ["P", fmtMW(f.p)+" MW"],
+    ["Q", fmtMW(f.q)+" MVAr"],
+    ["I máx", nf0.format(f.imax)+" A"],
+    ["U", f.vll>1 ? nfP.format(f.vll)+" kV" : "—"],
+    ["fp", (f.closed && f.p>0.02) ? nfP.format(f.fp) : "—"]
+  ];
+  box.innerHTML = items.map(([k,v])=>
+    `<div class="fd-kpi"><span class="fd-k">${k}</span><span class="fd-v">${v}</span></div>`).join("");
+}
+
+function fdMsg(text){
+  const m = $("#fdMsg");
+  if(text){ m.textContent = text; m.classList.add("show"); }
+  else m.classList.remove("show");
+}
+function syncFdButtons(){
+  document.querySelectorAll("#fdMetricSel button").forEach(b=>
+    b.classList.toggle("active", b.dataset.metric === fd.metric));
+  document.querySelectorAll("#fdRangeSel button").forEach(b=>
+    b.classList.toggle("active", parseInt(b.dataset.range,10) === fd.range));
+}
+
+function openFeederDetail(id){
+  const f = state.feeders.find(x=>x.id === id) || null;
+  fd.id = id; fd.hoverIdx = null; fd.data = null;
+  $("#fdTitle").textContent = (f && f.name) ? `${id} · ${f.name}` : id;
+  $("#fdSub").textContent = f ? `${feederKindText(f)} · Barra ${fdBus(f)} · ${feederStateText(f)}` : "";
+  renderFeederKpis(f);
+  syncFdButtons();
+  const dlg = $("#feederDetail");
+  if(!dlg.open) dlg.showModal();
+  loadFeederTrend();
+}
+
+async function loadFeederTrend(){
+  fd.data = null; fd.hoverIdx = null;
+  renderFeederChart();
+  if(state.mode === "demo"){
+    fdMsg("El histórico por celda requiere conexión con el servidor; no está disponible en modo demostración.");
+    return;
+  }
+  fdMsg("cargando histórico…");
+  try{
+    const d = await fetchJSON(`${API}/api/trend/feeder?id=${encodeURIComponent(fd.id)}&range=${fd.range}`);
+    fd.data = d;
+    const n = (d.ts || []).length;
+    fdMsg(n >= 2 ? "" : "Sin suficiente histórico en esta ventana todavía.");
+    renderFeederChart();
+  }catch(e){
+    fdMsg("No se pudo cargar el histórico de la celda.");
+  }
+}
+
+function renderFeederChart(){
+  const cv = $("#fdChart");
+  if(!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth || 640, h = 220;
+  cv.width = w*dpr; cv.height = h*dpr;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(1,0,0,1,0,0); ctx.scale(dpr, dpr);
+  ctx.clearRect(0,0,w,h);
+
+  const M = FD_METRICS[fd.metric];
+  const d = fd.data;
+  const ts = (d && d.ts) || [];
+  const vals = (d && d.series) ? d.series[M.key] : null;
+  const tip = $("#fdTooltip");
+  if(!d || ts.length < 2 || !vals){ tip.style.display = "none"; return; }
+
+  const pad = FD_PAD, n = ts.length;
+  const present = vals.filter(v=>v!==null && v!==undefined);
+  let dmin = present.length ? Math.min(...present) : 0;
+  let dmax = present.length ? Math.max(...present) : 1;
+  let vmin, vmax;
+  if(M.zero){
+    // Magnitudes con cero físico (P, I): piso en 0 (o menos si hay negativos).
+    vmin = Math.min(0, dmin);
+    vmax = Math.max(dmax*1.12, vmin + 0.001);
+  }else{
+    // Magnitudes que oscilan en una banda estrecha (Q, U): autoescala ajustada.
+    const span = (dmax - dmin) || Math.abs(dmax)*0.02 || 1;
+    vmin = dmin - span*0.15;
+    vmax = dmax + span*0.15;
+  }
+  if(vmax <= vmin) vmax = vmin + 1;
+
+  const X = i => pad.l + (w-pad.l-pad.r) * (n>1 ? i/(n-1) : 0);
+  const Y = v => pad.t + (h-pad.t-pad.b) * (1 - (v-vmin)/(vmax-vmin));
+
+  /* grilla + escala vertical */
+  ctx.strokeStyle = "rgba(29,43,71,.9)"; ctx.lineWidth = 1;
+  ctx.fillStyle = "rgba(115,136,172,.85)"; ctx.font = "10px IBM Plex Mono, monospace";
+  ctx.textAlign = "left";
+  for(let k=0;k<=4;k++){
+    const v = vmin + (vmax-vmin)*k/4, y = Y(v);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y); ctx.stroke();
+    ctx.fillText(M.fmt(v), 4, y+3);
+  }
+  /* marcas de tiempo (según timestamp real de los puntos) */
+  const tFirst = new Date(ts[0]).getTime(), tLast = new Date(ts[n-1]).getTime();
+  const spanMs = Math.max(1, tLast - tFirst);
+  const fmtTick = ms => new Date(ms).toLocaleTimeString("es-AR", { hour:"2-digit", minute:"2-digit" });
+  ctx.textAlign = "center"; ctx.fillStyle = "rgba(115,136,172,.7)";
+  const TICKS = 5;
+  for(let k=0;k<=TICKS;k++){
+    const frac = k/TICKS, tx = pad.l + (w-pad.l-pad.r)*frac;
+    ctx.strokeStyle = "rgba(29,43,71,.5)";
+    ctx.beginPath(); ctx.moveTo(tx, pad.t); ctx.lineTo(tx, h-pad.b); ctx.stroke();
+    ctx.fillText(fmtTick(tFirst + spanMs*frac), tx, h-6);
+  }
+  ctx.textAlign = "left";
+  /* línea de la magnitud elegida (corta el trazo en huecos sin dato) */
+  ctx.strokeStyle = M.color; ctx.lineWidth = 2; ctx.lineJoin = "round";
+  ctx.beginPath();
+  let started = false;
+  vals.forEach((v,i)=>{
+    if(v===null || v===undefined){ started = false; return; }
+    const x = X(i), y = Y(v);
+    if(!started){ ctx.moveTo(x,y); started = true; } else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  /* etiqueta de la magnitud */
+  ctx.fillStyle = M.color; ctx.font = "10px IBM Plex Mono, monospace";
+  ctx.fillText(`${M.label} · ${M.unit}`, pad.l+4, 12);
+
+  /* crosshair / tooltip */
+  if(fd.hoverIdx!==null && fd.hoverIdx>=0 && fd.hoverIdx<n){
+    const i = fd.hoverIdx, v = vals[i], x = X(i);
+    ctx.strokeStyle = "rgba(220,230,247,.35)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, h-pad.b); ctx.stroke();
+    let body;
+    if(v===null || v===undefined){
+      body = `<div class="tt-row">sin dato</div>`;
+    }else{
+      const y = Y(v);
+      ctx.beginPath(); ctx.arc(x, y, 3.4, 0, Math.PI*2);
+      ctx.fillStyle = M.color; ctx.fill();
+      ctx.strokeStyle = "var(--bg)"; ctx.lineWidth = 1.4; ctx.stroke();
+      body = `<div class="tt-row"><span class="tt-dot" style="background:${M.color}"></span>${M.fmt(v)} ${M.unit}</div>`;
+    }
+    const when = new Date(ts[i]).toLocaleString("es-AR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" });
+    tip.innerHTML = `<span class="tt-time">${when}</span>${body}`;
+    tip.style.left = Math.max(4, Math.min(w-160, x+10)) + "px";
+    tip.style.display = "block";
+  }else{
+    tip.style.display = "none";
+  }
+}
+
+(function initFeederDetail(){
+  const cv = $("#fdChart");
+  const pick = clientX => {
+    const n = (fd.data && fd.data.ts) ? fd.data.ts.length : 0;
+    if(n < 2) return null;
+    const rect = cv.getBoundingClientRect();
+    const frac = (clientX - rect.left - FD_PAD.l) / Math.max(1, (rect.width - FD_PAD.l - FD_PAD.r));
+    return Math.max(0, Math.min(n-1, Math.round(frac*(n-1))));
+  };
+  cv.addEventListener("mousemove", e=>{ fd.hoverIdx = pick(e.clientX); renderFeederChart(); });
+  cv.addEventListener("mouseleave", ()=>{ fd.hoverIdx = null; renderFeederChart(); });
+  cv.addEventListener("touchstart", e=>{ if(e.touches[0]){ fd.hoverIdx = pick(e.touches[0].clientX); renderFeederChart(); } }, { passive:true });
+  cv.addEventListener("touchmove",  e=>{ if(e.touches[0]){ fd.hoverIdx = pick(e.touches[0].clientX); renderFeederChart(); } }, { passive:true });
+
+  document.querySelectorAll("#fdMetricSel button").forEach(b=>{
+    b.addEventListener("click", ()=>{ fd.metric = b.dataset.metric; fd.hoverIdx = null; syncFdButtons(); renderFeederChart(); });
+  });
+  document.querySelectorAll("#fdRangeSel button").forEach(b=>{
+    b.addEventListener("click", ()=>{ fd.range = parseInt(b.dataset.range,10); fd.hoverIdx = null; syncFdButtons(); loadFeederTrend(); });
+  });
+  $("#fdClose").addEventListener("click", ()=> $("#feederDetail").close());
+})();
 
 /* ---------------- Reloj ---------------- */
 setInterval(()=>{
@@ -1420,7 +1701,10 @@ setInterval(()=>{
   if(state.mode === "lost" && state.lastOk) $("#staleAge").textContent = "hace " + ageTxt(state.lastOk);
 }, 1000);
 
-window.addEventListener("resize", ()=>{ if(state.history.length) renderTrend(); });
+window.addEventListener("resize", ()=>{
+  if(state.history.length) renderTrend();
+  if($("#feederDetail").open) renderFeederChart();
+});
 
 /* ---------------- Configuración UI ---------------- */
 const dlg = $("#cfg");

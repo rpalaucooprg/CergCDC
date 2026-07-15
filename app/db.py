@@ -219,6 +219,53 @@ def read_trend(range_seconds: int, max_points: int) -> dict[str, Any]:
     return {"ts": times, "series": series, "bucket_seconds": bucket}
 
 
+def read_feeder_trend(feeder_id: str, range_seconds: int, max_points: int) -> dict[str, Any]:
+    """Devuelve el trend histórico de UNA celda en la ventana dada.
+
+    Mismo downsampling casero que read_trend (bucket por aritmética sobre
+    epoch). Devuelve varias series (P, Q, I máx, U, fp) en un solo viaje para
+    que el front pueda alternar la magnitud sin re-consultar. I máx se agrega
+    con max() (nos interesa el pico del bucket, no el promedio); el resto con
+    avg().
+    """
+    since = datetime.now(timezone.utc).timestamp() - range_seconds
+    bucket = max(1, int(range_seconds / max_points))
+
+    sql = """
+        SELECT
+          to_timestamp(floor(extract(epoch FROM ts) / %(bucket)s) * %(bucket)s) AS bucket_ts,
+          avg(p_mw)   AS p_mw,
+          avg(q_mvar) AS q_mvar,
+          max(i_max)  AS i_max,
+          avg(v_ll)   AS v_ll,
+          avg(fp)     AS fp
+        FROM feeder_sample
+        WHERE feeder_id = %(fid)s AND ts >= to_timestamp(%(since)s)
+        GROUP BY bucket_ts
+        ORDER BY bucket_ts ASC
+    """
+    with get_pool().connection() as conn:
+        rows = conn.execute(
+            sql, {"bucket": bucket, "since": since, "fid": feeder_id}
+        ).fetchall()
+
+    times: list[str] = []
+    series: dict[str, list] = {"p": [], "q": [], "imax": [], "vll": [], "fp": []}
+
+    def _r(v, nd):
+        return round(v, nd) if v is not None else None
+
+    for r in rows:
+        times.append(r["bucket_ts"].isoformat())
+        series["p"].append(_r(r["p_mw"], 4))
+        series["q"].append(_r(r["q_mvar"], 4))
+        series["imax"].append(_r(r["i_max"], 1))
+        series["vll"].append(_r(r["v_ll"], 4))
+        series["fp"].append(_r(r["fp"], 4))
+
+    return {"id": feeder_id, "ts": times, "series": series, "bucket_seconds": bucket}
+
+
 def read_recent_alarms(limit: int = 50) -> list[dict[str, Any]]:
     with get_pool().connection() as conn:
         rows = conn.execute(

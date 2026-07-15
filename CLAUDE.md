@@ -79,6 +79,7 @@ README.md
 | `GET /` | Dashboard (sirve `templates/index.html` estático) |
 | `GET /api/state` | Último snapshot normalizado (lee caché en DB) |
 | `GET /api/trend?range=SEG` | Trend de generación por TG, con downsampling |
+| `GET /api/trend/feeder?id=CELDA&range=SEG` | Trend histórico de UNA celda (P, Q, I máx, U, fp); mismo downsampling que el de generación |
 | `GET /api/alarms?limit=N` | Últimos eventos de alarma |
 | `GET /api/stream` | SSE: empuja cada snapshot nuevo (LISTEN/NOTIFY) |
 | `GET /healthz` | Chequeo de salud |
@@ -159,7 +160,14 @@ algo similar reaparece, acá está el diagnóstico:
   `proxy_buffering off` en `location /api/stream`, si no las actualizaciones en
   vivo se retrasan o no llegan.
 - **Forma final del tablero:** el trabajo de UI sigue en curso. Últimos cambios:
-  selector de ventana del trend (1h/6h/12h/24h) y filtro de generadores detenidos.
+  selector de ventana del trend (1h/6h/12h/24h), filtro de generadores detenidos
+  y **detalle histórico por celda**: al hacer clic en una fila de la tabla de
+  distribución o en una celda del unifilar se abre un modal (`#feederDetail`) con
+  los valores actuales y un gráfico histórico. Consume `GET /api/trend/feeder`
+  (una consulta trae P/Q/Imáx/U; el selector de magnitud alterna sin re-consultar,
+  el de ventana sí re-consulta). En modo demo el modal avisa que el histórico
+  requiere backend. Los generadores siguen usando su tarjeta (clic en el unifilar
+  hace scroll a la card), no el modal.
 - **Histórico viejo con spikes:** las muestras espurias guardadas antes del filtro
   del pie de máquina siguen en `gen_sample`. El front no las dibuja (corta la
   línea en <=0.05 MW), pero si se quiere limpiar de verdad, correr un UPDATE.

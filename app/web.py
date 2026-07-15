@@ -5,6 +5,7 @@ Sirve el tablero y expone:
   GET /                 -> HTML del dashboard
   GET /api/state        -> último snapshot (lee caché en DB, NO consulta SCADA)
   GET /api/trend?range= -> trend histórico de generación
+  GET /api/trend/feeder?id=&range= -> trend histórico de una celda
   GET /api/alarms       -> últimos eventos de alarma
   GET /api/stream       -> SSE: empuja cada snapshot nuevo (LISTEN/NOTIFY)
   GET /healthz          -> chequeo de salud
@@ -60,6 +61,21 @@ def api_trend():
     rng = max(60, min(rng, config.TREND_MAX_RANGE))
     data = db.read_trend(rng, config.TREND_MAX_POINTS)
     return jsonify(data)
+
+
+@app.route("/api/trend/feeder")
+def api_trend_feeder():
+    """Trend histórico de una sola celda. Igual que /api/trend pero filtrado
+    por id de celda y con varias magnitudes (P, Q, I máx, U, fp)."""
+    fid = (request.args.get("id") or "").strip()
+    if not fid:
+        return jsonify(error="falta el parámetro id"), 400
+    try:
+        rng = int(request.args.get("range", config.TREND_DEFAULT_RANGE))
+    except ValueError:
+        rng = config.TREND_DEFAULT_RANGE
+    rng = max(60, min(rng, config.TREND_MAX_RANGE))
+    return jsonify(db.read_feeder_trend(fid, rng, config.TREND_MAX_POINTS))
 
 
 @app.route("/api/alarms")

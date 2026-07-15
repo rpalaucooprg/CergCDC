@@ -101,6 +101,21 @@ class SqliteDB:
             series[r["tg_id"]][ts_index[r["ts"]]] = round(r["p_mw"], 4)
         return {"ts": times, "series": series, "bucket_seconds": 1}
 
+    def read_feeder_trend(self, feeder_id, range_seconds, max_points):
+        rows = self.conn.execute(
+            "SELECT ts, p_mw, q_mvar, i_max, v_ll, fp FROM feeder_sample WHERE feeder_id=? ORDER BY ts ASC",
+            (feeder_id,)).fetchall()
+        times, series = [], {"p": [], "q": [], "imax": [], "vll": [], "fp": []}
+        rnd = lambda v, nd: (round(v, nd) if v is not None else None)
+        for r in rows:
+            times.append(r["ts"])
+            series["p"].append(rnd(r["p_mw"], 4))
+            series["q"].append(rnd(r["q_mvar"], 4))
+            series["imax"].append(rnd(r["i_max"], 1))
+            series["vll"].append(rnd(r["v_ll"], 4))
+            series["fp"].append(rnd(r["fp"], 4))
+        return {"id": feeder_id, "ts": times, "series": series, "bucket_seconds": 1}
+
     def read_recent_alarms(self, limit=50):
         rows = self.conn.execute("SELECT * FROM alarm_event ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [{"cell": r["cell_id"], "eventBit": r["event_bit"], "active": bool(r["active"]), "ack": bool(r["ack"]), "tsRelay": r["ts_relay"]} for r in rows]
@@ -137,6 +152,15 @@ def run():
     print(f"  OK: {len(tr['ts'])} puntos, series {list(tr['series'].keys())}")
     print(f"  TG3 evolución: {[round(v,2) for v in tg3]}")
     print(f"  TG1 (detenido): {[round(v,2) for v in tr['series']['TG1']]}")
+
+    print("\n=== /api/trend/feeder ===")
+    ft = dbx.read_feeder_trend("A0", 3600, 600)
+    assert len(ft["ts"]) == 5, f"esperaba 5 puntos para A0, hay {len(ft['ts'])}"
+    assert set(ft["series"].keys()) == {"p", "q", "imax", "vll", "fp"}
+    assert all(v is not None for v in ft["series"]["p"]), "A0 (en servicio) no debería tener P nula"
+    assert ft["series"]["imax"][0] == 61, f"I máx de A0 debía ser 61 A, es {ft['series']['imax'][0]}"
+    print(f"  OK: {len(ft['ts'])} puntos para A0 · P={[round(v,2) for v in ft['series']['p']]}")
+    print(f"  I máx={ft['series']['imax']}  U={[round(v,2) for v in ft['series']['vll']]}")
 
     print("\n=== /api/alarms ===")
     al = dbx.read_recent_alarms()
